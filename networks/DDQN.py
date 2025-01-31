@@ -1,9 +1,7 @@
 
 import os
-import pickle
-from argparse import Namespace
-from collections import namedtuple, deque
-from collections.abc import Iterable
+
+from memory.ReplayBuffer import Experience, ReplayBuffer
 
 import torch
 import torch.nn as nn
@@ -13,9 +11,6 @@ import torch.nn.functional as F
 import random
 import numpy as np
 import copy
-
-
-Experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
 
 
 class DuelingQNetwork(nn.Module):
@@ -47,50 +42,6 @@ class DuelingQNetwork(nn.Module):
         adv = self.fc3_adv(adv)
 
         return val + adv - adv.mean()
-    
-
-class ReplayBuffer():
-    """ 
-    Fixed-size buffer to store experience tuples.
-    """
-
-    def __init__(self, action_size, buffer_size, batch_size, device):
-        self.action_size = action_size
-        self.memory = deque(maxlen=buffer_size)
-        self.batch_size = batch_size
-        self.device = device
-
-    def add(self, state, action, reward, next_state, done):
-        if action is None:
-            Warning("Action is None")
-        experience = Experience(np.expand_dims(state, 0), action, reward, np.expand_dims(next_state, 0), done)
-        self.memory.append(experience)  
-
-    def sample(self):
-        experiences = random.sample(self.memory, k=self.batch_size)
-
-        states = torch.from_numpy(self.vstack_states([e.state for e in experiences if e is not None])).float().to(self.device)
-        actions = torch.from_numpy(self.vstack_states([e.action for e in experiences if e is not None])).long().to(self.device)
-        rewards = torch.from_numpy(self.vstack_states([e.reward for e in experiences if e is not None])).float().to(self.device)
-        next_states = torch.from_numpy(self.vstack_states([e.next_state for e in experiences if e is not None])).float().to(self.device)
-        dones = torch.from_numpy(self.vstack_states([e.done for e in experiences if e is not None]).astype(np.uint8)).float().to(self.device)
-
-        return states, actions, rewards, next_states, dones
-
-    def vstack_states(self, states):
-        """
-        Determines the dimensionality of the state, considering states being iterables and then reshapes
-        them to a tensor of shape (len(states), statedim). For example:
-        
-        1D state: [1, 2, 3, 4] -> [[1], [2], [3], [4]]  |  (4,) -> (4, 1)
-        2D state: [[1, 2], [3, 4]] -> [[1, 2], [3, 4]]  |  (4, 2) -> (4, 2)  (no change)
-        """
-        sub_dim = len(states[0][0]) if isinstance(states[0], Iterable) else 1
-        np_states = np.reshape(np.array(states), (len(states), sub_dim))
-        return np_states
-    
-    def __len__(self):
-        return len(self.memory)
     
 
 class DDDQNPolicy():
@@ -130,6 +81,7 @@ class DDDQNPolicy():
             self.t_step = 0
             self.loss = 0
     
+    
     def act(self, state, eps=0.):
         """ 
         Returns actions for given state as per current policy.
@@ -151,21 +103,7 @@ class DDDQNPolicy():
             return np.argmax(action_values.cpu().data.numpy())
         else:
             return random.choice(np.arange(self.action_size))     
-
-
-    def step(self, state, action, reward, next_state, done):
-        """ 
-        Save experience in replay memory, and initiate learning if applicable.
-        """
-        # add experience to ReplayBuffer
-        self.memory.add(state, action, reward, next_state, done)
-
-        # Learn every UPDATE_EVERY time steps
-        self.t_step = (self.t_step + 1) % self.update_every
-        if self.t_step == 0:
-            # If enough samples are available in memory, get random subset and learn
-            if self.memory.__len__() > self.buffer_min_size and self.memory.__len__() > self.batch_size:
-                self.learn()
+        
 
     def learn(self):
         """ 
@@ -204,7 +142,7 @@ class DDDQNPolicy():
         """
         for target_param, local_param in zip(self.qnet_target.parameters(), self.qnet_local.parameters()):
             target_param.data.copy_(self.tau*local_param.data + (1.0-self.tau)*target_param.data)
-            
+
 
     def save(self, filename):
         """ 
@@ -212,6 +150,7 @@ class DDDQNPolicy():
         """
         torch.save(self.qnet_local.state_dict(), f'{filename}.local')
         torch.save(self.qnet_target.state_dict(), f'{filename}.target')
+
 
     def load(self, filename):
         """ 
@@ -222,19 +161,6 @@ class DDDQNPolicy():
         if os.path.exists(f'{filename}.target'):
             self.qnet_target.load_state_dict(torch.load(f'{filename}.target'))
 
-    def save_replay_buffer(self, filename):
-        """ 
-        Save replay buffer to file.
-        """
-        with open(filename, 'wb') as f:
-            pickle.dump(list(self.memory.memory[-500000:]), f)
-
-    def load_replay_buffer(self, filename):
-        """ 
-        Load replay buffer from file.
-        """
-        with open(filename, 'rb') as f:
-            self.memory.memory = pickle.load(f)
 
     def test(self):
         """ 
