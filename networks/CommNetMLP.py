@@ -32,7 +32,7 @@ class CommNetMLP(nn.Module):
         #! this is multi-action support, which is not needed for flatland
         self.heads = nn.ModuleList([nn.Linear(args.hid_size, o) for o in args.naction_heads])
 
-        #? what does this do?
+        # Set the standard deviation of the normal distribution with which initial weights for a linear layer are set
         self.init_std = args.init_std if hasattr(args, 'comm_init_std') else 0.2
 
         # Mask for communication
@@ -45,9 +45,9 @@ class CommNetMLP(nn.Module):
         self.encoder = nn.Linear(obs_shape, self.hid_size)
 
         if self.recurrent:
-            self.hidden_encoder = nn.Linear(self.hid_size, self.hid_size) #! not used in the code again
+            # self.hidden_encoder = nn.Linear(self.hid_size, self.hid_size) #! not used in the code again
             self.LSTM_module = nn.LSTMCell(self.hid_size, self.hid_size) 
-            self.init_hidden(args.batch_size) #! the initialised hidde states is not assigned anywhere
+            self.init_hidden(args.batch_size) #! the initialised hidden states is not assigned anywhere
 
         # if weights are shared the linear layer is shared, otherwise one is instatiated for each pass
         if self.share_weights:
