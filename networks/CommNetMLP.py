@@ -7,9 +7,9 @@ import torch.nn.functional as F
 import torch
 from torch import Tensor
 from argparse import Namespace
-from typing import Tuple
+from typing import Tuple, List
 
-class CommNetMLP(nn.Module):
+class CommNet(nn.Module):
     '''
     MLP-based communication netowrk that uses a communication vector to communicate information between agents.
     '''
@@ -45,9 +45,7 @@ class CommNetMLP(nn.Module):
         self.encoder = nn.Linear(obs_shape, self.hid_size)
 
         if self.recurrent:
-            # self.hidden_encoder = nn.Linear(self.hid_size, self.hid_size) #! not used in the code again
             self.LSTM_module = nn.LSTMCell(self.hid_size, self.hid_size) 
-            self.init_hidden(args.batch_size) #! the initialised hidden states is not assigned anywhere
 
         # if weights are shared the linear layer is shared, otherwise one is instatiated for each pass
         if self.share_weights:
@@ -63,7 +61,7 @@ class CommNetMLP(nn.Module):
         self.value_head = nn.Linear(self.hid_size, 1)
     
 
-    def forward(self, state: Tensor, prev_hidden_state: Tensor = None, prev_cell_state: Tensor = None, info={}) -> Tuple[Tensor, Tensor, Tuple[Tensor, Tensor]]:
+    def forward(self, state: Tensor, prev_hidden_state: Tensor = None, prev_cell_state: Tensor = None, info={}) -> Tuple[List[Tensor], Tensor, Tuple[Tensor, Tensor]]:
         '''
         Forward function for the CommNet class
 
@@ -128,7 +126,7 @@ class CommNetMLP(nn.Module):
         value_head = self.value_head(hidden_state)
         hidden_state = hidden_state.view(batch_size, self.n_agents, self.hid_size)
 
-        action = [F.softmax(head(hidden_state), dim=-1) for head in self.heads]
+        action: List[Tensor] = [F.softmax(head(hidden_state), dim=-1) for head in self.heads]
 
         if self.args.recurrent:
             return action, value_head, (hidden_state.clone(), cell_state.clone())
