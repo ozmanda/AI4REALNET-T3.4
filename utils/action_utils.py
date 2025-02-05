@@ -6,14 +6,14 @@ import torch
 from torch import Tensor
 import numpy as np
 
-def sample_action(action_probs: Tensor):
+def sample_action(action_log_probs: Tensor) -> Tensor:
     '''
-    Converts log-probabilities into probabilities and samples from each of the distributions. 
+    Converts log-probabilities into probabilities and samples from the distribution. 
+     -> action_probs: Tensor of length n_actions
     '''
-    log_p_a = action_probs
-    p_a = [[z.exp() for z in x] for x in log_p_a]
-    ret = torch.stack([torch.stack([torch.multinomial(x, 1).detach() for x in p]) for p in p_a])
-    return ret
+    action_probs = [x.exp() for x in action_log_probs]
+    sampled_action: Tensor = torch.multinomial(action_probs, 1).detach()
+    return sampled_action
 
 
 def translate_discrete_action(args: Namespace, env, action: int): 
@@ -28,6 +28,7 @@ def translate_discrete_action(args: Namespace, env, action: int):
         actual[i] = action[i].data.squeeze()[0] * (high - low) / (args.naction_heads[i] - 1) + low
     action = [x.squeeze().data[0] for x in action]
     return action, actual
+
 
 def translate_continuous_action(args: Namespace, env, action: int): 
     '''
