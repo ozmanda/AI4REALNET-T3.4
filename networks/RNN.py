@@ -23,11 +23,10 @@ class RNN(MLP):
         return F.log_softmax(self.action_head(next_hidden_state), dim=-1), v, next_hidden_state
 
 
-    def init_hidden(self, batch_size: int) -> Tuple[Tensor, Tensor]:
+    def init_hidden(self, batch_size: int) -> Tensor:
         # TODO: write description
         'dim 0 = num of layers * num of direction'
-        return tuple((torch.zeros(batch_size * self.n_agents, self.hid_size, requires_grad=True),
-                      torch.zeros(batch_size * self.n_agents, self.hid_size, requires_grad=True)))
+        return torch.zeros(batch_size * self.n_agents, self.hid_size, requires_grad=True)
     
 
 class LSTM(RNN):
@@ -55,3 +54,10 @@ class LSTM(RNN):
         v = self.value_head(next_hidden_state)
 
         return F.log_softmax(self.action_head(next_hidden_state), dim=-1), v, next_hidden_state.clone(), next_cell_state.clone()
+    
+
+    def init_hidden(self, batch_size: int) -> Tuple[Tensor, Tensor]:
+        # TODO: write description
+        'dim 0 = num of layers * num of direction'
+        return tuple((torch.zeros(batch_size * self.n_agents, self.hid_size, requires_grad=True),
+                      torch.zeros(batch_size * self.n_agents, self.hid_size, requires_grad=True)))
