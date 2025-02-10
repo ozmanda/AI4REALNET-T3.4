@@ -6,7 +6,7 @@ from flatland.envs.line_generators import sparse_line_generator
 from flatland.envs.malfunction_generators import MalfunctionParameters, ParamMalfunctionGen
 
 
-def small_flatland_env(observation='tree', malfunctions=True):
+def small_flatland_env(observation: str = 'tree', max_tree_depth: int = 2, malfunctions: bool = True) -> RailEnv:
     """
     RailEnv parameters:
         width = 35
@@ -18,13 +18,12 @@ def small_flatland_env(observation='tree', malfunctions=True):
         max_rail_pairs_in_city = 2
     
     Observation Builder:
-        max_depth = 2
         predictor = ShortestPathPredictorForRailEnv()
 
     Malfunctions are optional and can be turned off.    
     """
     if observation == 'tree':
-        observation_builder = TreeObsForRailEnv(max_depth=2, predictor=ShortestPathPredictorForRailEnv())
+        observation_builder = TreeObsForRailEnv(max_depth=max_tree_depth, predictor=ShortestPathPredictorForRailEnv())
     elif observation == 'global':
         observation_builder = GlobalObsForRailEnv()
 
