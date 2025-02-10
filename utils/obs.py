@@ -6,11 +6,19 @@ from utils.utils import max_lowerthan, min_greaterthan
 import numpy as np
 import torch
 from torch import Tensor
+from typing import Tuple
+from flatland.envs.observations import Node
 
-def _split_node_into_feature_groups(node):
-    data = np.zeros(6)
-    distance = np.zeros(1)
-    agent_data = np.zeros(4)
+def _split_node_into_feature_groups(node: Node) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    '''
+    Splits the features of a single node into three arrays: 
+        - data: the observation data in the form of distance to targets, switches, other agents, etc.
+        - distance: the distance to the target
+        - agent_data: the number of agents in the same direction, opposite direction, malfunctioning, and the minimum speed fraction of the slowest agent in the same direction
+    '''
+    data: np.ndarray = np.zeros(6)
+    distance: np.ndarray = np.zeros(1)
+    agent_data: np.ndarray = np.zeros(4) 
 
     data[0] = node.dist_own_target_encountered
     data[1] = node.dist_other_target_encountered
@@ -25,15 +33,18 @@ def _split_node_into_feature_groups(node):
     agent_data[1] = node.num_agents_opposite_direction
     agent_data[2] = node.num_agents_malfunctioning
     agent_data[3] = node.speed_min_fractional
+    #* missing agents ready to depart feature
+    # agent_data[4] = node.num_agents_ready_to_depart
 
     return data, distance, agent_data
 
 
-def _split_subtree_into_feature_groups(node, current_tree_depth: int, max_tree_depth: int):
+def _split_subtree_into_feature_groups(node: Node, current_tree_depth: int, max_tree_depth: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     # return lists of -inf if the current node is -inf
     if node == -np.inf:
-        remaining_depth = max_tree_depth - current_tree_depth
-        num_remaining_nodes = int((4 ** (remaining_depth + 1) - 1) / (4 - 1))
+        remaining_depth: int = max_tree_depth - current_tree_depth
+        #* this gives the right answer, but I don't understand how it is deduced
+        num_remaining_nodes: int = int((4 ** (remaining_depth + 1) - 1) / (4 - 1))
         return [-np.inf] * num_remaining_nodes * 6, [-np.inf] * num_remaining_nodes, [-np.inf] * num_remaining_nodes * 4
     
     # extract node data
@@ -53,7 +64,7 @@ def _split_subtree_into_feature_groups(node, current_tree_depth: int, max_tree_d
     return data, distance, agent_data
 
 
-def split_tree_into_feature_groups(tree, max_tree_depth: int):
+def split_tree_into_feature_groups(tree: Node, max_tree_depth: int):
     data, distance, agent_data = _split_node_into_feature_groups(tree)
 
     for direction in TreeObsForRailEnv.tree_explored_actions_char:
@@ -108,19 +119,14 @@ def normalise_tree_observation(observation, tree_depth: int, observation_radius=
 
 
 def translate_observation(observation: dict, obs_type: str) -> Tensor:
-    ''' Transforms observations from flatland RailEnv to torch tensors '''
+    ''' Transforms observations from flatland RailEnv to torch tensors 
+    Global observations are of shape (n_agents, env_width, env_height, 23)
+    Tree observations are of shape (n_nodes, 12)
+    '''
     if obs_type == 'global':
         return global_observation_tensor(observation)
     elif obs_type == 'tree':
         return tree_observation_tensor(observation)
-
-
-def tree_observation_tensor(observation: dict) -> Tensor:
-    '''
-    Transforms observations from flatland RailEnv to torch tensors
-    '''
-    # TODO: figure out how to translate tree observations
-    raise NotImplementedError
 
 
 def global_observation_tensor(observation: dict) -> Tensor:
@@ -135,3 +141,68 @@ def global_observation_tensor(observation: dict) -> Tensor:
                                                 observation[agent_id][1], 
                                                 observation[agent_id][2]), axis=2)
     return torch.tensor(observation, dtype=torch.float32)
+
+# TODO: test tensor generation function
+def tree_observation_tensor(observation: dict, max_depth: int) -> Tensor:
+    '''
+    Transforms observations from flatland RailEnv to torch tensors
+    '''
+    features: np.ndarray = split_tree(observation, max_depth)
+    return torch.Tensor(features)
+
+
+def split_tree(tree: Node, max_depth: int):
+    ''' Splits the tree observation into an ndarray of features, initial splitting function '''
+    features = split_features(tree)
+
+    for direction in TreeObsForRailEnv.tree_explored_actions_char:
+        child_features = split_subtree(tree.childs[direction], 1, max_depth)
+        features = np.concatenate((features, child_features))
+
+    return features
+
+
+def split_subtree(node: Node | float, current_depth: int, max_depth: int):
+    ''' Recursively splits the subtree observation into an ndarray of features '''
+    # case: terminal node
+    if node == -np.inf:
+        remaining_depth: int = max_depth - current_depth
+        #* this gives the right answer, but I don't understand how it is deduced
+        num_remaining_nodes: int = int((4 ** (remaining_depth + 1) - 1) / (4 - 1))
+        return [-np.inf] * 12
+    
+    features = split_features(node)
+
+    # case: leaf node
+    if not node.childs:
+        return features
+    
+    for direction in TreeObsForRailEnv.tree_explored_actions_char:
+        child_features = split_subtree(node.childs[direction], current_depth + 1, max_depth)
+        features = np.concatenate((features, child_features))
+
+    return features
+
+
+def split_features(node: Node) -> np.ndarray:
+    ''' Splits the features of a single node into an ndarray of shape (1, 12)'''
+    features = np.zeros(12)
+    features[0] = node.dist_own_target_encountered
+    features[1] = node.dist_other_target_encountered
+    features[2] = node.dist_other_agent_encountered
+    features[3] = node.dist_potential_conflict
+    features[4] = node.dist_unusable_switch
+    features[5] = node.dist_to_next_branch
+
+    features[6] = node.dist_min_to_target
+
+    features[7] = node.num_agents_same_direction
+    features[8] = node.num_agents_opposite_direction
+    features[9] = node.num_agents_malfunctioning
+    features[10] = node.speed_min_fractional
+    features[11] = node.num_agents_ready_to_depart
+
+    return features
+
+
+    
