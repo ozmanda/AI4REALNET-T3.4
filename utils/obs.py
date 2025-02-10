@@ -6,7 +6,7 @@ from utils.utils import max_lowerthan, min_greaterthan
 import numpy as np
 import torch
 from torch import Tensor
-from typing import Tuple
+from typing import Tuple, Union
 from flatland.envs.observations import Node
 
 def _split_node_into_feature_groups(node: Node) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -118,7 +118,7 @@ def normalise_tree_observation(observation, tree_depth: int, observation_radius=
     return normalised_observation
 
 
-def translate_observation(observation: dict, obs_type: str) -> Tensor:
+def translate_observation(observation: dict, obs_type: str, max_depth: int = 0, n_nodes: int = 0) -> Tensor:
     ''' Transforms observations from flatland RailEnv to torch tensors 
     Global observations are of shape (n_agents, env_width, env_height, 23)
     Tree observations are of shape (n_nodes, 12)
@@ -126,7 +126,7 @@ def translate_observation(observation: dict, obs_type: str) -> Tensor:
     if obs_type == 'global':
         return global_observation_tensor(observation)
     elif obs_type == 'tree':
-        return tree_observation_tensor(observation)
+        return tree_observation_tensor(observation, max_depth, n_nodes)
 
 
 def global_observation_tensor(observation: dict) -> Tensor:
@@ -142,13 +142,14 @@ def global_observation_tensor(observation: dict) -> Tensor:
                                                 observation[agent_id][2]), axis=2)
     return torch.tensor(observation, dtype=torch.float32)
 
-# TODO: test tensor generation function
-def tree_observation_tensor(observation: dict, max_depth: int) -> Tensor:
+def tree_observation_tensor(observation: dict, max_depth: int, n_nodes: int) -> Tensor:
     '''
-    Transforms observations from flatland RailEnv to torch tensors
+    Transforms observations from flatland RailEnv to a torch tensor with shape (n_agents, n_nodes, 12)
     '''
-    features: np.ndarray = split_tree(observation, max_depth)
-    return torch.Tensor(features)
+    agents_obs = np.ndarray(shape=(len(observation), n_nodes, 12))
+    for agent in observation.keys():
+        agents_obs[agent] = split_tree(observation[agent], max_depth)
+    return torch.Tensor(agents_obs)
 
 
 def split_tree(tree: Node, max_depth: int):
@@ -157,19 +158,20 @@ def split_tree(tree: Node, max_depth: int):
 
     for direction in TreeObsForRailEnv.tree_explored_actions_char:
         child_features = split_subtree(tree.childs[direction], 1, max_depth)
-        features = np.concatenate((features, child_features))
+        features = np.concatenate((features, child_features), axis=0)
 
     return features
 
 
-def split_subtree(node: Node | float, current_depth: int, max_depth: int):
+def split_subtree(node: Union[Node, float], current_depth: int, max_depth: int):
     ''' Recursively splits the subtree observation into an ndarray of features '''
     # case: terminal node
     if node == -np.inf:
         remaining_depth: int = max_depth - current_depth
         #* this gives the right answer, but I don't understand how it is deduced
         num_remaining_nodes: int = int((4 ** (remaining_depth + 1) - 1) / (4 - 1))
-        return [-np.inf] * 12
+        node_features = [-np.inf] * 12 * num_remaining_nodes
+        return np.reshape(node_features, newshape=(num_remaining_nodes, 12))
     
     features = split_features(node)
 
@@ -179,7 +181,7 @@ def split_subtree(node: Node | float, current_depth: int, max_depth: int):
     
     for direction in TreeObsForRailEnv.tree_explored_actions_char:
         child_features = split_subtree(node.childs[direction], current_depth + 1, max_depth)
-        features = np.concatenate((features, child_features))
+        features = np.concatenate((features, child_features), axis=0)
 
     return features
 
@@ -201,6 +203,8 @@ def split_features(node: Node) -> np.ndarray:
     features[9] = node.num_agents_malfunctioning
     features[10] = node.speed_min_fractional
     features[11] = node.num_agents_ready_to_depart
+
+    features = np.expand_dims(features, axis=0)
 
     return features
 
