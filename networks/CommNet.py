@@ -30,7 +30,7 @@ class CommNet(nn.Module):
         self.recurrent: bool = args.recurrent
 
         #! this is multi-action support, which is not needed for flatland
-        self.heads = nn.ModuleList([nn.Linear(args.hid_size, o) for o in args.naction_heads])
+        self.action_head = nn.Linear(args.hid_size, args.n_actions)
 
         # Set the standard deviation of the normal distribution with which initial weights for a linear layer are set
         self.init_std = args.init_std if hasattr(args, 'comm_init_std') else 0.2
@@ -126,12 +126,12 @@ class CommNet(nn.Module):
         value_head = self.value_head(hidden_state)
         hidden_state = hidden_state.view(batch_size, self.n_agents, self.hid_size)
 
-        action: List[Tensor] = [F.softmax(head(hidden_state), dim=-1) for head in self.heads]
+        action_probs: Tensor = F.softmax(self.action_head(hidden_state), dim=-1)
 
         if self.args.recurrent:
-            return action, value_head, (hidden_state.clone(), cell_state.clone())
+            return action_probs, value_head, (hidden_state.clone(), cell_state.clone())
         else:
-            return action, value_head, (None, None)
+            return action_probs, value_head, (None, None)
 
 
     def forward_state_encoder(self, state: Tensor, prev_hidden_state: Tensor = None, prev_cell_state: Tensor = None) -> Tuple[Tensor, Tensor, Tensor]:
