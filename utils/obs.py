@@ -3,6 +3,9 @@
 import numpy as np
 from flatland.envs.observations import TreeObsForRailEnv
 from utils.utils import max_lowerthan, min_greaterthan
+import numpy as np
+import torch
+from torch import Tensor
 
 def _split_node_into_feature_groups(node):
     data = np.zeros(6)
@@ -92,7 +95,7 @@ def norm_obs_clip(observation, clip_min=-1, clip_max=1, fixed_radius=0, normalis
     return np.clip((np.array(observation) - min_obs) / norm, clip_min, clip_max)
 
 
-def normalise_observation(observation, tree_depth: int, observation_radius=0):
+def normalise_tree_observation(observation, tree_depth: int, observation_radius=0):
     # extract feature data
     data, distance, agent_data = split_tree_into_feature_groups(observation, tree_depth)
 
@@ -102,3 +105,33 @@ def normalise_observation(observation, tree_depth: int, observation_radius=0):
 
     normalised_observation = np.concatenate((np.concatenate((data, distance)), agent_data))
     return normalised_observation
+
+
+def translate_observation(observation: dict, obs_type: str) -> Tensor:
+    ''' Transforms observations from flatland RailEnv to torch tensors '''
+    if obs_type == 'global':
+        return global_observation_tensor(observation)
+    elif obs_type == 'tree':
+        return tree_observation_tensor(observation)
+
+
+def tree_observation_tensor(observation: dict) -> Tensor:
+    '''
+    Transforms observations from flatland RailEnv to torch tensors
+    '''
+    # TODO: figure out how to translate tree observations
+    raise NotImplementedError
+
+
+def global_observation_tensor(observation: dict) -> Tensor:
+    '''
+    Transforms global observations from flatland RailEnv to torch tensors. 
+    Ouput: 
+     - observation: a tensor of shape (n_agents, env_width, env_height, 23)
+    '''
+    obs = np.zeros((len(observation), observation[0][0].shape[0], observation[0][0].shape[1], 23))
+    for agent_id in observation.keys():
+        obs[agent_id] = np.concatenate((observation[agent_id][0], 
+                                                observation[agent_id][1], 
+                                                observation[agent_id][2]), axis=2)
+    return torch.tensor(observation, dtype=torch.float32)
