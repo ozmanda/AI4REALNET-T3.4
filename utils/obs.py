@@ -118,10 +118,10 @@ def normalise_tree_observation(observation, tree_depth: int, observation_radius=
     return normalised_observation
 
 
-def translate_observation(observation: dict, obs_type: str, max_depth: int = 0, n_nodes: int = 0) -> Tensor:
+def obs_dict_to_tensor(observation: dict, obs_type: str, max_depth: int = 0, n_nodes: int = 0) -> Tensor:
     ''' Transforms observations from flatland RailEnv to torch tensors 
     Global observations are of shape (n_agents, env_width, env_height, 23)
-    Tree observations are of shape (n_nodes, 12)
+    Tree observations are of shape (n_agents, n_nodes, 12)
     '''
     if obs_type == 'global':
         return global_observation_tensor(observation)
