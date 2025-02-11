@@ -36,8 +36,13 @@ class RNN(MLP):
 
 
     def init_hidden(self, batch_size: int) -> Tensor:
-        # TODO: write description
-        'dim 0 = num of layers * num of direction'
+        """
+        Initialises the hidden and cell states of the RNN module. 
+
+        Input:  batch_size        int
+
+        Output: hidden_state      Tensor (batch_size * n_agents, hid_size)
+        """
         return torch.zeros(batch_size * self.n_agents, self.hid_size, requires_grad=True)
     
 
@@ -65,7 +70,6 @@ class LSTM(RNN):
             - next_hidden_state     Tensor (batch_size * n_agents, hid_size)
             - next_cell_state       Tensor (batch_size * n_agents, hid_size)
         """
-        # TODO: write description 
         # TODO: add array sizing in comments
         batch_size: int = observations.size(0)
 
