@@ -14,7 +14,19 @@ class RNN(MLP):
         self.n_agents: int = self.args.n_agents
         self.hid_size = self.args.hid_size
 
-    def forward(self, observations, prev_hidden_state) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, observations: Tuple, prev_hidden_state: Tuple) -> Tuple[Tensor, Tensor, Tensor]:
+        """
+        Forward pass of the RNN module.
+    
+        Input:
+            - observations          Tensor (batch_size * n_agents, num_inputs)
+            - prev_hidden_state     Tensor (batch_size * n_agents, hid_size)
+    
+        Return: Tuple
+            - action_log_probs      Tensor (batch_size * n_agents, n_actions)
+            - value                 Tensor (batch_size * n_agents, 1)
+            - next_hidden_state     Tensor (batch_size * n_agents, hid_size)
+        """
         encoded_x: Tensor = self.fc1(observations)
         next_hidden_state: Tensor = F.tanh(self.fc2(prev_hidden_state) + encoded_x)
 
@@ -37,7 +49,22 @@ class LSTM(RNN):
         del self.fc2
         self.lstm_unit = nn.LSTMCell(self.hid_size, self.hid_size)
 
+
     def forward(self, observations: Tensor, prev_hidden_state: Tensor, prev_cell_state: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        """
+        Forward pass of the LSTM module.
+    
+        Input:
+            - observations          Tensor (batch_size * n_agents, num_inputs)
+            - prev_hidden_state     Tensor (batch_size * n_agents, hid_size)
+            - prev_cell_state       Tensor (batch_size * n_agents, hid_size)
+    
+        Return: Tuple
+            - action_log_probs      Tensor (batch_size * n_agents, n_actions)
+            - value                 Tensor (batch_size * n_agents, 1)
+            - next_hidden_state     Tensor (batch_size * n_agents, hid_size)
+            - next_cell_state       Tensor (batch_size * n_agents, hid_size)
+        """
         # TODO: write description 
         # TODO: add array sizing in comments
         batch_size: int = observations.size(0)
@@ -57,7 +84,15 @@ class LSTM(RNN):
     
 
     def init_hidden(self, batch_size: int) -> Tuple[Tensor, Tensor]:
-        # TODO: write description
-        'dim 0 = num of layers * num of direction'
+        """
+        Initialises the hidden and cell states of the LSTM module. 
+
+        Input:
+            - batch_size        int
+
+        Output: Tuple
+            - hidden_state      Tensor (batch_size * n_agents, hid_size)
+            - cell_state        Tensor (batch_size * n_agents, hid_size)
+        """
         return tuple((torch.zeros(batch_size * self.n_agents, self.hid_size, requires_grad=True),
                       torch.zeros(batch_size * self.n_agents, self.hid_size, requires_grad=True)))
