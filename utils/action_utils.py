@@ -5,6 +5,7 @@ from argparse import Namespace
 import torch
 from torch import Tensor
 import numpy as np
+from typing import List
 
 def sample_action(action_log_probs: Tensor) -> Tensor:
     '''
@@ -14,6 +15,12 @@ def sample_action(action_log_probs: Tensor) -> Tensor:
     action_probs = [x.exp() for x in action_log_probs]
     sampled_action: Tensor = torch.multinomial(action_probs, 1).detach()
     return sampled_action
+
+
+# TODO: check this
+def action_tensor_to_dict(action: Tensor, agent_ids: List[int]) -> dict[int: int]:
+    ''' Converts a tensor of actions to a dictionary with agent_ids as keys '''
+    return {agent_ids[i]: action[i] for i in range(len(agent_ids))}
 
 
 def translate_discrete_action(args: Namespace, env, action: int): 
