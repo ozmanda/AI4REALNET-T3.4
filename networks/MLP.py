@@ -9,7 +9,7 @@ from argparse import Namespace
 from typing import Tuple
 
 class MLP(nn.Module):
-    def __init__(self, args: Namespace, num_inputs: int):
+    def __init__(self, args: Namespace, num_inputs: int) -> None:
         super().__init__()
 
         self.args = args
