@@ -10,6 +10,7 @@ import torch
 from networks.RNN import RNN, LSTM
 from flatland.envs.rail_env import RailEnv
 from argparse import Namespace
+from utils.utils import merge_dicts
 from utils.action_utils import sample_action, action_tensor_to_dict
 from utils.obs import obs_dict_to_tensor
 from flatland.envs.rail_env import RailEnv
@@ -24,6 +25,7 @@ class RNNTrainer():
         self.env: RailEnv = env
         self.n_agents: int = self.args.n_agents
         self.agent_ids: range = env.get_agent_handles()
+        self.n_actions = len(env.action_space)
         self.lstm = True if args.rnn_type == 'lstm' else False
 
         self.observation_type: str = args.observation_type
@@ -32,7 +34,7 @@ class RNNTrainer():
             self.tree_nodes = int((4 ** (self.max_tree_depth + 1) - 1) / 3) #* geometric progression
             self.obs_features: int = 12
 
-        self.stats: dict = dict()
+        self.info: dict = dict()
 
         self.optimizer = optim.rmsprop.RMSprop(policy_net.parameters(), lr=args.lr, alpha=args.alpha, eps=args.eps)
         self.params = [p for p in self.policy_net.parameters()]
@@ -49,15 +51,15 @@ class RNNTrainer():
             - reward    dict[int: float]
             - done      dict[int: bool]
         """
-        episode: List = []
+        # for global observation: (n_agents, (env_height, env_width, 23))
+        # for tree observation: (n_agents, 1)
         output: Tuple[dict, dict] = self.env.reset()
         obs_dict, info_dict = output
-        obs_tensor: Tensor = obs_dict_to_tensor(obs_dict, obs_type=self.args.observation_type, )
-        stats: dict = dict()
 
-        # declarations
-        action: List[Tensor]
-        value: Tensor
+        # for global observation: (n_agents, env_height * env_width * 23)
+        # for tree observation: (n_agents, n_nodes * obs_features)
+        obs_tensor: Tensor = obs_dict_to_tensor(obs_dict, self.observation_type, self.max_tree_depth, self.tree_nodes) 
+        
 
         # initialisations
         if self.lstm:
@@ -65,6 +67,7 @@ class RNNTrainer():
         else: 
             prev_hidden_state = self.policy_net.init_hidden(self.n_agents)
 
+        episode: List = []
         step = 0
         while True: 
             # TODO: check dimension of action_probs
@@ -87,7 +90,7 @@ class RNNTrainer():
             # create alive mask for agents that are already done to mask reward
             done_mask = [done_dict[agent_id] for agent_id in self.agent_ids]
 
-            transition = Transition(obs_dict, actions_dict, value, reward, done_dict)
+            transition = Transition(obs_tensor, actions_tensor, value, reward, done_dict)
             episode.append(transition)
             obs_dict = next_obs_dict
 
@@ -96,3 +99,53 @@ class RNNTrainer():
                 break
         
         return episode 
+    
+
+    def run_batch(self) -> Tuple[Transition, dict]:
+        """
+        Gathers one batch of training data from multiple episodes. The length of the batch can
+        be greater that args.batch_size, as it is determined by the number of steps in the episodes.
+        # TODO: is it better to have complete episodes or a fixed batch size?
+    
+        Return:
+            - batch         Tranisition with fields consisting of lists of length num_steps
+                - action    list of Tensors ()
+            - batch_info    dict
+        """
+        batch = []
+        batch_info: dict = dict()
+        batch_info['num_episodes'] = 0
+
+        while len(batch) < self.args.batch_size:
+            episode: List[Transition] = self.get_episode() # ()
+            batch_info['num_episodes'] += 1
+            batch.extend(episode)
+        
+        batch_info['num_steps'] = len(batch)
+        batch = Transition(*zip(*batch)) # turns a list of transitions into a transition containing lists
+        return batch, batch_info
+
+
+    def train_batch(self):
+        """
+        Trains the network on one batch of transitions.
+    
+        Output:
+            - performs a single optimizer step
+    
+        Return:
+            - grad_stats    dict
+        """
+        batch, batch_info = self.run_batch()
+        self.optimizer.zero_grad()
+
+        grad_info = self.compute_gradient(batch)
+
+        for parameter in self.params:
+            if parameter._grad is not None:
+                parameter._grad.data /= grad_info['num_steps']
+        self.optimizer.step()
+
+        return merge_dicts(grad_info, batch_info)
+
+
