@@ -7,12 +7,13 @@ import torch.nn.functional as F
 from torch import Tensor
 from MLP import MLP
 from typing import Tuple
+from argparse import Namespace
 
 class RNN(MLP):
-    def __init__(self, args, num_inputs):
+    def __init__(self, args: Namespace, num_inputs: int) -> None:
         super().__init__(args, num_inputs)
         self.n_agents: int = self.args.n_agents
-        self.hid_size = self.args.hid_size
+        self.hid_size: int = self.args.hid_size
 
     def forward(self, observations: Tuple, prev_hidden_state: Tuple) -> Tuple[Tensor, Tensor, Tensor]:
         """
@@ -47,7 +48,7 @@ class RNN(MLP):
     
 
 class LSTM(RNN):
-    def __init__(self, args, num_inputs):
+    def __init__(self, args: Namespace, num_inputs: int) -> None:
         super().__init__(args, num_inputs)
         self.n_agents: int = self.args.n_agents
         self.hid_size: int = self.args.hid_size
