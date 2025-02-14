@@ -118,15 +118,21 @@ def normalise_tree_observation(observation, tree_depth: int, observation_radius=
     return normalised_observation
 
 
-def obs_dict_to_tensor(observation: dict, obs_type: str, max_depth: int = 0, n_nodes: int = 0) -> Tensor:
-    ''' Transforms observations from flatland RailEnv to torch tensors 
-    Global observations are of shape (n_agents, env_width, env_height, 23)
-    Tree observations are of shape (n_agents, n_nodes, 12)
+def obs_dict_to_tensor(observation: dict, obs_type: str, n_agents: int, max_depth: int = 0, n_nodes: int = 0) -> Tensor:
+    ''' 
+    Transforms observations from flatland RailEnv to torch tensors, also flattening them to be
+    two-dimensional. See https://flatland.aicrowd.com/environment/observations.html for more 
+    information on observation types and structure.
+
+    For global observations:    (n_agents, env_width * env_height * 23)
+    Tree observations:          (n_agents, n_nodes * 12)
     '''
     if obs_type == 'global':
-        return global_observation_tensor(observation)
+        obs_tensor = global_observation_tensor(observation)
     elif obs_type == 'tree':
-        return tree_observation_tensor(observation, max_depth, n_nodes)
+        obs_tensor = tree_observation_tensor(observation, max_depth, n_nodes)
+
+    return obs_tensor.view(n_agents, -1)
 
 
 def global_observation_tensor(observation: dict) -> Tensor:
