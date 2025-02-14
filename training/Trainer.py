@@ -18,11 +18,11 @@ Transition = namedtuple('Transition', ('state', 'action', 'value', 'reward', 'do
 
 @dataclass
 class Transition:
-    state: dict
-    action: dict
-    value: float
-    reward: dict
-    done: dict
+    state: Tensor
+    action: Tensor
+    value: Tensor
+    reward: Tensor
+    done: Tensor
 
 
 class Trainer():
