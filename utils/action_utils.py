@@ -5,7 +5,7 @@ from argparse import Namespace
 import torch
 from torch import Tensor
 import numpy as np
-from typing import List
+from typing import List, Dict
 
 def sample_action(action_log_probs: Tensor) -> Tensor:
     '''
@@ -18,7 +18,7 @@ def sample_action(action_log_probs: Tensor) -> Tensor:
 
 
 # TODO: check this
-def action_tensor_to_dict(action: Tensor, agent_ids: List[int]) -> dict[int: int]:
+def action_tensor_to_dict(action: Tensor, agent_ids: List[int]) -> Dict[int, int]:
     ''' Converts a tensor of actions to a dictionary with agent_ids as keys '''
     return {agent_ids[i]: action[i] for i in range(len(agent_ids))}
 

@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch import optim, Tensor
 import torch.nn as nn
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 from argparse import Namespace
 from utils.action_utils import sample_action
 from networks.MLP import MLP
@@ -15,14 +15,6 @@ from collections import namedtuple
 from dataclasses import dataclass
 
 Transition = namedtuple('Transition', ('state', 'action', 'value', 'reward', 'done'))
-
-@dataclass
-class Transition:
-    state: Tensor
-    action: Tensor
-    value: Tensor
-    reward: Tensor
-    done: Tensor
 
 
 class Trainer():
@@ -33,7 +25,8 @@ class Trainer():
         if self.obs_type == 'tree': 
             self.max_tree_depth = args.max_tree_depth
 
-        self.stats: dict = dict()
+        # TODO: add dict typing
+        self.stats: Dict = dict()
 
         self.optimizer = optim.rmsprop.RMSprop(policy_net.parameters(), lr=args.lr, alpha=args.alpha, eps=args.eps)
         self.params = [p for p in self.policy_net.parameters()]
@@ -41,8 +34,9 @@ class Trainer():
 
     def get_episode(self, epoch):
         episode: List = []
-        observations: Tuple[dict, dict] = self.env.reset()
-        state: dict = dict()
+        observations: Tuple[Dict, Dict] = self.env.reset()
+        # TODO: add dict typing
+        state: Dict = dict()
 
         action: List[Tensor]
         value: Tensor
@@ -59,8 +53,8 @@ class Trainer():
                 break
 
 
-    
-    def get_batch(self) -> Tuple[List[Tensor], dict]:
+    # TODO: add dict typing
+    def get_batch(self) -> Tuple[List[Tensor], Dict]:
         batch: List[Tensor] = []
         self.stats['num_episodes'] = 0
         

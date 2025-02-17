@@ -2,8 +2,8 @@ from argparse import Namespace
 from torch import optim, Tensor
 from networks.CommNet import CommNet
 from flatland.envs.rail_env import RailEnv
-from Trainer import Transition
-from typing import List, Tuple
+from training.Trainer import Transition
+from typing import List, Tuple, Dict
 
 class CommNetTrainer():
     def __init__(self, args, policy_net: CommNet, env: RailEnv) -> None:
@@ -38,7 +38,7 @@ class CommNetTrainer():
         pass
 
 
-    def compute_grad(self, batch: List[Transition]) -> dict[str: float]:
+    def compute_grad(self, batch: List[Transition]) -> Dict[str: float]:
         """
         Compute the gradients for the policy network.
     
