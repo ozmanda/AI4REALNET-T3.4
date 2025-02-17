@@ -1,5 +1,6 @@
 import numpy as np
 from numbers import Number
+from typing import Dict
 
 def max_lowerthan(sequence, value):
     """ Find the largest item in sequence that is lower than a given value. """
@@ -22,7 +23,7 @@ def min_greaterthan(sequence, value):
     return min
 
 
-def merge_dicts(source_dict: dict, destination_dict: dict) -> dict:
+def merge_dicts(source_dict: Dict, destination_dict: Dict) -> Dict:
     """ 
     Merge dictionaries that potentially contain the same keys. The following cases are considered:
         1. The key is not in the destination dictionary, in which case the key-value pair is added to the destination dictionary.
