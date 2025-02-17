@@ -2,10 +2,10 @@
 Adapted from IC3Net trainer.py
 Two subclasses of Trainer from Trainer.py specifically for LSTM and RNN policies
 '''
-from Trainer import Trainer
+from training.Trainer import Trainer
 from torch import optim, Tensor
 import torch.nn as nn
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Dict
 import torch
 from networks.RNN import RNN, LSTM
 from flatland.envs.rail_env import RailEnv
@@ -14,7 +14,7 @@ from utils.utils import merge_dicts
 from utils.action_utils import sample_action, action_tensor_to_dict
 from utils.obs import obs_dict_to_tensor
 from flatland.envs.rail_env import RailEnv
-from Trainer import Transition
+from training.Trainer import Transition
 
 class RNNTrainer(): 
     """ Trainer class for the no-communication recurrent policy networks, generalised to both the RNN and LSTM versions """
@@ -45,15 +45,15 @@ class RNNTrainer():
         Performs one episode in the environment and gathers the transitions
     
         Return: List[Transitions]
-            - state     dict[int: dict]
-            - action    dict[int: int]
-            - value     dict[int: float]
-            - reward    dict[int: float]
-            - done      dict[int: bool]
+            - state     Dict[int, Dict]
+            - action    Dict[int, int]
+            - value     Dict[int, float]
+            - reward    Dict[int, float]
+            - done      Dict[int, bool]
         """
         # for global observation: (n_agents, (env_height, env_width, 23))
         # for tree observation: (n_agents, 1)
-        output: Tuple[dict, dict] = self.env.reset()
+        output: Tuple[Dict, Dict] = self.env.reset()
         obs_dict, info_dict = output
 
         # for global observation: (n_agents, env_height * env_width * 23)
@@ -83,7 +83,7 @@ class RNNTrainer():
             
             # TODO: check dimension of sampled action
             actions_tensor: Tensor = sample_action(action_probs)
-            actions_dict: dict = action_tensor_to_dict(actions_tensor, self.agent_ids)
+            actions_dict: Dict = action_tensor_to_dict(actions_tensor, self.agent_ids)
             # TODO: check what datatypes are returned
             next_obs_dict, reward, done_dict, info = self.env.step(actions_dict)
 
@@ -101,7 +101,7 @@ class RNNTrainer():
         return episode 
     
 
-    def run_batch(self) -> Tuple[Transition, dict]:
+    def run_batch(self) -> Tuple[Transition, Dict]:
         """
         Gathers one batch of training data from multiple episodes. The length of the batch can
         be greater that args.batch_size, as it is determined by the number of steps in the episodes.
@@ -113,7 +113,7 @@ class RNNTrainer():
             - batch_info    dict
         """
         batch = []
-        batch_info: dict = dict()
+        batch_info: Dict = dict()
         batch_info['num_episodes'] = 0
 
         while len(batch) < self.args.batch_size:
