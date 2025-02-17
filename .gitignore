@@ -1,2 +1,8 @@
+.gitignore
 .venv/
 training_parameters.txt
+archive
+test.ipynb
+arglist.txt
+pseudo.py
+**/__pycache__/
