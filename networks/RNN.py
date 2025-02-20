@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
-from MLP import MLP
+from networks.MLP import MLP
 from typing import Tuple
 from argparse import Namespace
 
