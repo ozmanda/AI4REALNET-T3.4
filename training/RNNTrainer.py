@@ -33,6 +33,9 @@ class RNNTrainer():
             self.max_tree_depth: int = args.max_tree_depth
             self.tree_nodes = int((4 ** (self.max_tree_depth + 1) - 1) / 3) #* geometric progression
             self.obs_features: int = 12
+            self.n_obs = self.tree_nodes * self.obs_features
+        elif self.observation_type == 'global':
+            self.n_obs = self.n_agents * env.width * env.height * 23
 
         self.info: dict = dict()
 
@@ -70,11 +73,11 @@ class RNNTrainer():
         episode: List = []
         step = 0
         while True: 
-            # TODO: check dimension of action_probs
+            # TODO: check dimension of action_log_probs
             if self.lstm:
-                action_probs, value, next_hidden_state, next_cell_state = self.policy_net(obs_tensor, prev_hidden_state, prev_cell_state)
+                action_log_probs, value, next_hidden_state, next_cell_state = self.policy_net(obs_tensor, prev_hidden_state, prev_cell_state)
             else: 
-                action_probs, value, next_hidden_state = self.policy_net(obs_tensor, prev_hidden_state)
+                action_log_probs, value, next_hidden_state = self.policy_net(obs_tensor, prev_hidden_state)
 
             if (step + 1) % self.args.detach_gap == 0:
                 next_hidden_state = next_hidden_state.detach()
@@ -82,7 +85,7 @@ class RNNTrainer():
                     next_cell_state = next_cell_state.detach()
             
             # TODO: check dimension of sampled action
-            actions_tensor: Tensor = sample_action(action_probs)
+            actions_tensor: Tensor = sample_action(action_log_probs)
             actions_dict: Dict = action_tensor_to_dict(actions_tensor, self.agent_ids)
             # TODO: check what datatypes are returned
             next_obs_dict, reward, done_dict, info = self.env.step(actions_dict)
@@ -90,7 +93,7 @@ class RNNTrainer():
             # create alive mask for agents that are already done to mask reward
             done_mask = [done_dict[agent_id] for agent_id in self.agent_ids]
 
-            transition = Transition(obs_tensor, actions_tensor, value, reward, done_dict)
+            transition = Transition(obs_tensor, actions_tensor, action_log_probs, value, reward, done_dict)
             episode.append(transition)
             obs_dict = next_obs_dict
 
@@ -107,7 +110,7 @@ class RNNTrainer():
         be greater that args.batch_size, as it is determined by the number of steps in the episodes.
         # TODO: is it better to have complete episodes or a fixed batch size?
     
-        Return:
+        Return: # TODO: finish listing transition fields
             - batch         Tranisition with fields consisting of lists of length num_steps
                 - action    list of Tensors ()
             - batch_info    dict
@@ -117,7 +120,7 @@ class RNNTrainer():
         batch_info['num_episodes'] = 0
 
         while len(batch) < self.args.batch_size:
-            episode: List[Transition] = self.get_episode() # ()
+            episode: List[Transition] = self.get_episode()
             batch_info['num_episodes'] += 1
             batch.extend(episode)
         
@@ -134,7 +137,7 @@ class RNNTrainer():
             - performs a single optimizer step
     
         Return:
-            - grad_stats    dict
+            - grad_stats    Dict
         """
         batch, batch_info = self.run_batch()
         self.optimizer.zero_grad()
