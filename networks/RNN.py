@@ -31,9 +31,9 @@ class RNN(MLP):
         encoded_x: Tensor = self.fc1(observations)
         next_hidden_state: Tensor = F.tanh(self.fc2(prev_hidden_state) + encoded_x)
 
-        v = self.value_head(next_hidden_state)
+        v = self.critic(next_hidden_state)
 
-        return F.log_softmax(self.action_head(next_hidden_state), dim=-1), v, next_hidden_state
+        return F.log_softmax(self.actor(next_hidden_state), dim=-1), v, next_hidden_state
 
 
     def init_hidden(self, batch_size: int) -> Tensor:
@@ -50,8 +50,8 @@ class RNN(MLP):
 class LSTM(RNN):
     def __init__(self, args: Namespace, num_inputs: int) -> None:
         super().__init__(args, num_inputs)
-        self.n_agents: int = self.args.n_agents
-        self.hid_size: int = self.args.hid_size
+        self.n_agents: int = args.n_agents
+        self.hid_size: int = args.hid_size
         del self.fc2
         self.lstm_unit = nn.LSTMCell(self.hid_size, self.hid_size)
 
@@ -71,7 +71,10 @@ class LSTM(RNN):
             - next_hidden_state     Tensor (batch_size * n_agents, hid_size)
             - next_cell_state       Tensor (batch_size * n_agents, hid_size)
         """
-        # TODO: add array sizing in comments
+        # TODO: handle both batched and unbatched forward passes (singleton dimension at dim0)
+        # Handle single observations by adding a singleton dimension
+        if observations.dim() == 2:
+            observations = observations.unsqueeze(0)
         batch_size: int = observations.size(0)
 
         encoded_x: Tensor = self.fc1(observations)
@@ -79,13 +82,12 @@ class LSTM(RNN):
 
         next_hidden_state, next_cell_state = self.lstm_unit(encoded_x, (prev_hidden_state, prev_cell_state))
 
-        # TODO: check that this can be replaced with next_hidden_state.clone(), next_cell_state.clone()
-        # ret = (next_hidden_state.clone(), next_cell_state.clone())
-        next_hid = next_hid.view(batch_size, self.n_agents, self.hid_size)
+        # next_hid = next_hid.view(batch_size, self.n_agents, self.hid_size)
 
-        v = self.value_head(next_hidden_state)
+        v = self.critic(next_hidden_state)
+        action_log_probs = F.log_softmax(self.actor(next_hidden_state), dim=-1)
 
-        return F.log_softmax(self.action_head(next_hidden_state), dim=-1), v, next_hidden_state.clone(), next_cell_state.clone()
+        return action_log_probs, v, next_hidden_state.clone(), next_cell_state.clone()
     
 
     def init_hidden(self, batch_size: int) -> Tuple[Tensor, Tensor]:
