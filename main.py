@@ -7,10 +7,16 @@ from networks.CommNet import CommNet
 from networks.MLP import MLP
 from environments.env_small import small_flatland_env
 from flatland.envs.rail_env import RailEnv
+import time
 
 
 if __name__ == '__main_': 
     parser = ArgumentParser()
+
+    # Training Parameters
+    parser.add_argument('--epochs', type=int, help='Number of epochs to train for', default=100)
+    parser.add_argument('--epoch_size', type=int, help='Number of steps per epoch', default=10)
+    parser.add_argument('--batch_size', type=int, help='Batch size for training', default=500)
 
     # Environment Parameters
     parser.add_argument('--observation_type', type=str, help='Type of observation to use', default='tree')
@@ -30,12 +36,13 @@ if __name__ == '__main_':
     parser.add_argument('--entropy_coefficient', type=float, help='Coefficient for the entropy loss', default=0.001)
     parser.add_argument('--normalise_advantage', type=bool, help='Whether to normalise the advantage', default=True)
     parser.add_argument('--gamma', type=float, help='Discount factor for rewards', default=0.99)
+    parser.add_argument('--target_update_freq', type=int, help='Frequency of updating the target network', default=100)
 
     args: Namespace = parser.parse_args()
 
 
     env: RailEnv = small_flatland_env(observation=args.observation_type, max_tree_depth=args.max_tree_depth)
-    
+
     if args.observation_type == 'tree':
         tree_nodes = int((4 ** (args.max_tree_depth + 1) - 1) / 3)   # geometric progression
         obs_features = 12
@@ -56,4 +63,13 @@ if __name__ == '__main_':
         policynet = MLP(args, obs_inputs)
         trainer = Trainer(args, policynet, env)
 
-    trainer.train_batch()
+    for epoch in range(args.n_epochs):
+
+        epoch_start_time = time.time()
+        epoch_stats = dict()
+
+        for n in range(args.epoch_size):
+            batch_info = trainer.train_batch()
+
+        epoch_time = time.time() - epoch_start_time
+        
