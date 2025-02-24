@@ -90,6 +90,24 @@ class LSTM(RNN):
         return action_log_probs, v, next_hidden_state.clone(), next_cell_state.clone()
     
 
+    def forward_target_network(self, observations: Tensor, prev_hidden_state: Tensor, prev_cell_state: Tensor) -> Tensor:
+        """
+        Forward pass through the target actor network. Identical to self.forward, but only outputs the action logprobs. 
+        """
+        # Handle single observations by adding a singleton dimension
+        if observations.dim() == 2:
+            observations = observations.unsqueeze(0)
+        batch_size: int = observations.size(0)
+
+        encoded_x: Tensor = self.fc1(observations)
+        encoded_x = encoded_x.view(batch_size * self.n_agents, self.hid_size)
+
+        next_hidden_state, _ = self.lstm_unit(encoded_x, (prev_hidden_state, prev_cell_state))
+
+        action_log_probs = F.log_softmax(self.actor(next_hidden_state), dim=-1)
+        return action_log_probs
+    
+
     def init_hidden(self, batch_size: int) -> Tuple[Tensor, Tensor]:
         """
         Initialises the hidden and cell states of the LSTM module. 

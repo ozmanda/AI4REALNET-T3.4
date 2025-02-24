@@ -20,6 +20,7 @@ class MLP(nn.Module):
         self.fc1 = nn.Linear(num_inputs, args.hid_size)
         self.fc2 = nn.Linear(args.hid_size, args.hid_size)
         self.actor = nn.Linear(args.hid_size, args.n_actions)
+        self.actor_target = nn.Linear(args.hid_size, args.n_actions)
         self.critic = nn.Linear(args.hid_size, 1)
 
 
