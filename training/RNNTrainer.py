@@ -27,22 +27,24 @@ class RNNTrainer():
         self.env: RailEnv = env
         self.n_agents: int = self.args.n_agents
         self.agent_ids: range = env.get_agent_handles()
-        self.n_actions = len(env.action_space)
-        self.lstm = True if args.rnn_type == 'lstm' else False
+        self.n_actions: int = len(env.action_space)
+        self.lstm: bool = True if args.rnn_type == 'lstm' else False
 
         self.observation_type: str = args.observation_type
         if self.observation_type == 'tree':
             self.max_tree_depth: int = args.max_tree_depth
-            self.tree_nodes = int((4 ** (self.max_tree_depth + 1) - 1) / 3) #* geometric progression
+            self.tree_nodes: int = int((4 ** (self.max_tree_depth + 1) - 1) / 3) #* geometric progression
             self.obs_features: int = 12
-            self.n_obs = self.tree_nodes * self.obs_features
+            self.n_obs: int = self.tree_nodes * self.obs_features
         elif self.observation_type == 'global':
-            self.n_obs = self.n_agents * env.width * env.height * 23
+            self.n_obs: int = self.n_agents * env.width * env.height * 23
 
         self.info: dict = dict()
 
         self.optimizer = optim.rmsprop.RMSprop(policy_net.parameters(), lr=args.lr, alpha=args.alpha, eps=args.eps)
-        self.params = [p for p in self.policy_net.parameters()]
+        self.params: List[nn.Parameter] = [p for p in self.policy_net.parameters()]
+
+        self.optimisation_steps: int = 0
 
     
     def get_episode(self) -> List[Transition]:
