@@ -16,6 +16,8 @@ from utils.obs import obs_dict_to_tensor
 from flatland.envs.rail_env import RailEnv
 from training.Trainer import Transition
 
+from utils.reward_utils import compute_discounted_reward_per_agent
+
 class RNNTrainer(): 
     """ Trainer class for the no-communication recurrent policy networks, generalised to both the RNN and LSTM versions """
 
@@ -152,3 +154,66 @@ class RNNTrainer():
         return merge_dicts(grad_info, batch_info)
 
 
+    def compute_gradient(self, batch: Transition) -> None:
+        """
+        Computes the PPO loss metric using the following formulae: 
+            PPO_loss = E[CLIP_loss - c1 * value_loss + c2 * entropy]
+            CLIP_loss = E[min(ratio * advantage, clip(ratio, 1 - epsilon, 1 + epsilon) * advantage)]
+            value_loss = E[(value - returns)^2]
+            entropy = E[-sum(prob * log(prob))]
+    
+        Input: batch            Transition containing lists of length batch_size for each field
+            - state             Tensor(n_agents, n_obs)      [float] -> observation
+            - action            Tensor(n_agents)             [int]   -> action taken
+            - action_log_prob   Tensor(n_agents, n_actions)  [float] -> log prob of each action
+            - value             Tensor(n_agents)             [float] -> predicted next state value
+            - reward            Tensor(n_agents)             [float]
+            - done              Tensor(n_agents)             [bool]
+    
+        Return: gradient_info   dict
+            - action_loss
+            - value_loss
+            - entropy
+        """
+        gradient_info: Dict = {}
+        batch_size = len(batch.state)
+
+        # convert lists to tensors
+        observations = torch.Tensor(batch.state)
+        actions = torch.Tensor(batch.action)
+        action_log_probs = torch.Tensor(batch.action_log_prob) # (batch_size, n_agents, n_actions)
+        values = torch.Tensor(batch.value)
+        rewards = torch.Tensor(batch.reward)
+        dones = torch.Tensor(batch.done)
+
+        returns: Tensor = torch.zeros(batch_size, self.n_agents)
+        advantages: Tensor = torch.zeros(batch_size, self.n_agents)
+        future_rewards: Tensor = torch.zeros(self.n_agents)
+
+        # advantage calculation
+        #! assumes that all elements in the batch are from the same episode
+        discounted_rewards: Tensor = compute_discounted_reward_per_agent(rewards, self.args.gamma) # (batch_size, n_agents)
+        advantages: Tensor = discounted_rewards - values # (batch_size, n_agents)
+        if self.args.normalise_advantage: 
+            advantages = (advantages - advantages.mean()) / advantages.std()
+
+        # clipped surrogate objective
+        CLIP_loss: Tensor = torch.zeros(batch_size, self.n_agents)
+
+        # probability ratio
+        ratio: Tensor = 0
+        clipped_ratio: Tensor = torch.clamp(ratio, 1 - self.args.epsilon, 1 + self.args.epsilon)
+
+
+        # Value Loss calculation
+        value_loss: Tensor = (values - discounted_rewards).pow(2)
+        value_loss *= dones
+        value_loss = value_loss.mean() #! original code has sum, but "E[]" is a mean function (?)
+
+
+        # Entropy calculation
+        entropy: Tensor = torch.sum(-torch.exp(action_log_probs) * action_log_probs, dim=1) # (batch_size, n_agents)
+
+
+        # compute PPO loss
+        ppo_loss = CLIP_loss - self.args.value_coefficient * value_loss + self.args.entropy_coefficient * entropy
