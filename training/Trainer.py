@@ -14,7 +14,7 @@ from flatland.envs.rail_env import RailEnv
 from collections import namedtuple
 from dataclasses import dataclass
 
-Transition = namedtuple('Transition', ('state', 'action', 'action_log_prob', 'value', 'reward', 'done'))
+Transition = namedtuple('Transition', ('state', 'action', 'action_log_prob', 'hidden_states', 'cell_states', 'value', 'reward', 'done'))
 
 
 class Trainer():
