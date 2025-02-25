@@ -10,7 +10,7 @@ import torch
 from networks.RNN import RNN, LSTM
 from flatland.envs.rail_env import RailEnv
 from argparse import Namespace
-from utils.utils import merge_dicts
+from utils.utils import merge_dicts, dict_tuple_to_tensor
 from utils.action_utils import sample_action, action_tensor_to_dict
 from utils.obs import obs_dict_to_tensor
 from flatland.envs.rail_env import RailEnv
@@ -41,10 +41,12 @@ class RNNTrainer():
 
         self.info: dict = dict()
 
-        self.optimizer = optim.rmsprop.RMSprop(policy_net.parameters(), lr=args.lr, alpha=args.alpha, eps=args.eps)
+        self.optimizer = optim.RMSprop(policy_net.parameters(), lr=args.learning_rate, alpha=args.alpha, eps=args.eps)
         self.params: List[nn.Parameter] = [p for p in self.policy_net.parameters()]
 
-        self.optimisation_steps: int = 0
+        # target actor network update frequency
+        self.optimiser_steps: int = 0
+        self.target_actor_update_freq: int = args.target_update_freq
 
     
     def get_episode(self) -> List[Transition]:
@@ -61,18 +63,19 @@ class RNNTrainer():
         # for global observation: (n_agents, (env_height, env_width, 23))
         # for tree observation: (n_agents, 1)
         output: Tuple[Dict, Dict] = self.env.reset()
+        self.args.n_agents = self.env.get_num_agents()
         obs_dict, info_dict = output
 
         # for global observation: (n_agents, env_height * env_width * 23)
         # for tree observation: (n_agents, n_nodes * obs_features)
-        obs_tensor: Tensor = obs_dict_to_tensor(obs_dict, self.observation_type, self.max_tree_depth, self.tree_nodes) 
+        obs_tensor: Tensor = obs_dict_to_tensor(obs_dict, self.observation_type, self.n_agents, self.max_tree_depth, self.tree_nodes) 
         
 
         # initialisations
         if self.lstm:
-            prev_hidden_state, prev_cell_state = self.policy_net.init_hidden(self.n_agents)
+            prev_hidden_state, prev_cell_state = self.policy_net.init_hidden(1)
         else: 
-            prev_hidden_state = self.policy_net.init_hidden(self.n_agents)
+            prev_hidden_state = self.policy_net.init_hidden(1)
 
         episode: List = []
         step = 0
@@ -97,7 +100,10 @@ class RNNTrainer():
             # create alive mask for agents that are already done to mask reward
             done_mask = [done_dict[agent_id] for agent_id in self.agent_ids]
 
-            transition = Transition(obs_tensor, actions_tensor, action_log_probs, value, reward, done_dict)
+            if self.lstm:
+                transition = Transition(obs_tensor, actions_tensor, action_log_probs, prev_hidden_state, prev_cell_state, value, reward, done_dict)
+            else: 
+                transition = Transition(obs_tensor, actions_tensor, action_log_probs, prev_hidden_state, None, value, reward, done_dict)
             episode.append(transition)
             obs_dict = next_obs_dict
 
@@ -152,11 +158,16 @@ class RNNTrainer():
             if parameter._grad is not None:
                 parameter._grad.data /= grad_info['num_steps']
         self.optimizer.step()
+        self.optimiser_steps += 1
+
+        # perform target network update
+        if self.optimiser_steps % self.target_actor_update_freq == 0:
+            self.policy_net.actor_target.load_state_dict(self.policy_net.actor.state_dict())
 
         return merge_dicts(grad_info, batch_info)
 
 
-    def compute_gradient(self, batch: Transition) -> None:
+    def compute_gradient(self, batch: Transition) -> Dict[str, float]:
         """
         Computes the PPO loss metric using the following formulae: 
             PPO_loss = E[CLIP_loss - c1 * value_loss + c2 * entropy]
@@ -181,12 +192,15 @@ class RNNTrainer():
         batch_size = len(batch.state)
 
         # convert lists to tensors
-        observations = torch.Tensor(batch.state)
-        actions = torch.Tensor(batch.action)
-        action_log_probs = torch.Tensor(batch.action_log_prob) # (batch_size, n_agents, n_actions)
-        values = torch.Tensor(batch.value)
-        rewards = torch.Tensor(batch.reward)
-        dones = torch.Tensor(batch.done)
+        observations = torch.stack(batch.state)
+        actions = torch.stack(batch.action)
+        action_log_probs = torch.stack(batch.action_log_prob) # (batch_size, n_agents, n_actions)
+        values = torch.stack(batch.value)
+        rewards = dict_tuple_to_tensor(batch.reward)
+        # rewards = torch.stack(batch.reward)
+        dones = dict_tuple_to_tensor(batch.done)
+        # dones = torch.stack(batch.done)
+        hidden_states = (torch.stack(batch.hidden_states), torch.stack(batch.cell_states))
 
         returns: Tensor = torch.zeros(batch_size, self.n_agents)
         advantages: Tensor = torch.zeros(batch_size, self.n_agents)
@@ -202,20 +216,31 @@ class RNNTrainer():
         # clipped surrogate objective
         CLIP_loss: Tensor = torch.zeros(batch_size, self.n_agents)
 
-        # probability ratio
-        ratio: Tensor = 0
+        # probability ratio # TODO: where to get prev_hidden_state and _cell from?
+        target_log_probs = self.policy_net.forward_target_network(observations, hidden_states)
+        ratio: Tensor = torch.exp(action_log_probs - target_log_probs) 
         clipped_ratio: Tensor = torch.clamp(ratio, 1 - self.args.epsilon, 1 + self.args.epsilon)
+        clipped_ratio = clipped_ratio.sum(dim=0)
 
 
         # Value Loss calculation
         value_loss: Tensor = (values - discounted_rewards).pow(2)
-        value_loss *= dones
+        value_loss *= ~dones
         value_loss = value_loss.mean() #! original code has sum, but "E[]" is a mean function (?)
 
 
         # Entropy calculation
-        entropy: Tensor = torch.sum(-torch.exp(action_log_probs) * action_log_probs, dim=1) # (batch_size, n_agents)
+        entropy: Tensor = torch.sum(-torch.exp(action_log_probs) * action_log_probs, dim=1).mean() # (batch_size, n_agents)
 
 
         # compute PPO loss
-        ppo_loss = CLIP_loss - self.args.value_coefficient * value_loss + self.args.entropy_coefficient * entropy
+        ppo_loss: Tensor = CLIP_loss - self.args.value_coefficient * value_loss + self.args.entropy_coefficient * entropy
+
+        grad_dict = {'ppo_loss': ppo_loss, 
+                     'CLIP_loss': CLIP_loss,
+                     'value_loss': value_loss, 
+                     'entropy': entropy}
+        
+        ppo_loss.backward()
+        
+        return grad_dict
