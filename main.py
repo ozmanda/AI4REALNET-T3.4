@@ -8,15 +8,17 @@ from networks.MLP import MLP
 from environments.env_small import small_flatland_env
 from flatland.envs.rail_env import RailEnv
 import time
+from utils.utils import merge_dicts
 
 
-if __name__ == '__main_': 
+if __name__ == '__main__': 
     parser = ArgumentParser()
 
     # Training Parameters
     parser.add_argument('--epochs', type=int, help='Number of epochs to train for', default=100)
     parser.add_argument('--epoch_size', type=int, help='Number of steps per epoch', default=10)
     parser.add_argument('--batch_size', type=int, help='Batch size for training', default=500)
+    parser.add_argument('--max_steps', type=int, help='Maximum number of steps per episode', default=1000)
 
     # Environment Parameters
     parser.add_argument('--observation_type', type=str, help='Type of observation to use', default='tree')
@@ -29,9 +31,12 @@ if __name__ == '__main_':
     parser.add_argument('--rnn_type', type=str, help='Type of RNN to use', default='lstm')
 
     # Learning Parameters
+    parser.add_argument('--learning_rate', type=float, help='Learning rate for the optimizer', default=1e-2)
     parser.add_argument('--detach_gap', type=int, help='Number of steps before detaching the hidden state', default=1)
     parser.add_argument('--normalise_rewards', type=bool, help='Whether to normalise rewards', default=True)
-    parser.add_argument('--epsilon', type=float, help='Epsilon value for the epsilon greedy policy', default=0.2)
+    parser.add_argument('--alpha', type=float, help='Alpha value for the RMSProp optimisation algorithm', default=0.99)
+    parser.add_argument('--epsilon', type=float, help='Epsilon value for the CLIP_loss', default=0.2)
+    parser.add_argument('--eps', type=float, help='Epsilon value for the RMSProp optimisation algorithm', default=1e-8)
     parser.add_argument('--value_coefficient', type=float, help='Coefficient for the value loss', default=1)
     parser.add_argument('--entropy_coefficient', type=float, help='Coefficient for the entropy loss', default=0.001)
     parser.add_argument('--normalise_advantage', type=bool, help='Whether to normalise the advantage', default=True)
@@ -42,6 +47,9 @@ if __name__ == '__main_':
 
 
     env: RailEnv = small_flatland_env(observation=args.observation_type, max_tree_depth=args.max_tree_depth)
+    _ = env.reset()
+    args.n_agents = env.get_num_agents()
+    args.n_actions = env.action_space[0]
 
     if args.observation_type == 'tree':
         tree_nodes = int((4 ** (args.max_tree_depth + 1) - 1) / 3)   # geometric progression
@@ -55,7 +63,7 @@ if __name__ == '__main_':
 
     if args.recurrent:
         policynet = LSTM(args, obs_inputs) if args.rnn_type == 'lstm' else RNN(args, obs_inputs)
-        trainer = RNNTrainer()
+        trainer = RNNTrainer(args, policynet, env)
     elif args.comm:
         policynet: CommNet = CommNet(args, obs_inputs)
         trainer = CommNetTrainer(args, policynet, env)
@@ -63,7 +71,7 @@ if __name__ == '__main_':
         policynet = MLP(args, obs_inputs)
         trainer = Trainer(args, policynet, env)
 
-    for epoch in range(args.n_epochs):
+    for epoch in range(args.epochs):
 
         epoch_start_time = time.time()
         epoch_stats = dict()
@@ -72,4 +80,5 @@ if __name__ == '__main_':
             batch_info = trainer.train_batch()
 
         epoch_time = time.time() - epoch_start_time
+        print(epoch_time)
         
