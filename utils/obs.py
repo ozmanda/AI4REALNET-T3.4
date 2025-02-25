@@ -132,7 +132,8 @@ def obs_dict_to_tensor(observation: Dict[int, Node], obs_type: str, n_agents: in
         obs_tensor = tree_observation_tensor(observation, max_depth, n_nodes)
 
     # flatland fills missing values with -inf - replace with -999
-    obs_tensor[obs_tensor == -np.inf] = -99
+    obs_tensor[obs_tensor == -np.inf] = -9999
+    obs_tensor[obs_tensor == np.inf] = 9999
 
     return obs_tensor.view(n_agents, -1)
 
