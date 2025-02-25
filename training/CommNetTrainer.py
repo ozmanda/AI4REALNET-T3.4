@@ -38,7 +38,7 @@ class CommNetTrainer():
         pass
 
 
-    def compute_grad(self, batch: List[Transition]) -> Dict[str: float]:
+    def compute_grad(self, batch: List[Transition]) -> Dict[str, float]:
         """
         Compute the gradients for the policy network.
     
