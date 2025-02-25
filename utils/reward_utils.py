@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from torch import Tensor
+from typing import Tuple, Dict, Union
 
 def compute_discounted_reward_per_agent(rewards: Tensor, gamma: float) -> Tensor: 
     """
