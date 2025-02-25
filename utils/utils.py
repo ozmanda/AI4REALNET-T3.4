@@ -1,6 +1,8 @@
 import numpy as np
 from numbers import Number
-from typing import Dict
+from typing import Dict, Union, Tuple
+import torch
+from torch import Tensor
 
 def max_lowerthan(sequence, value):
     """ Find the largest item in sequence that is lower than a given value. """
@@ -59,3 +61,11 @@ def merge_dicts(source_dict: Dict, destination_dict: Dict) -> Dict:
             else: # 2.4 two non-number values 
                 destination_dict[key] = [destination_dict[key], value]
     return destination_dict
+
+def dict_tuple_to_tensor(input_tuple: Tuple[Dict[int, Union[float, int, bool]], ...]) -> Tensor:
+    """
+    Transforms a tuple of dictionaries into a tensor.
+    """
+    output_tensor = torch.tensor([list(input_tuple[i].values()) for i in range(len(input_tuple))])
+    output_tensor = output_tensor.transpose(1, 0)
+    return output_tensor
