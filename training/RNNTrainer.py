@@ -27,7 +27,7 @@ class RNNTrainer():
         self.env: RailEnv = env
         self.n_agents: int = self.args.n_agents
         self.agent_ids: range = env.get_agent_handles()
-        self.n_actions: int = len(env.action_space)
+        self.n_actions: int = env.action_space[0]
         self.lstm: bool = True if args.rnn_type == 'lstm' else False
 
         self.observation_type: str = args.observation_type
@@ -156,7 +156,7 @@ class RNNTrainer():
 
         for parameter in self.params:
             if parameter._grad is not None:
-                parameter._grad.data /= grad_info['num_steps']
+                parameter._grad.data /= batch_info['num_steps']
         self.optimizer.step()
         self.optimiser_steps += 1
 
@@ -199,6 +199,7 @@ class RNNTrainer():
         rewards = dict_tuple_to_tensor(batch.reward)
         # rewards = torch.stack(batch.reward)
         dones = dict_tuple_to_tensor(batch.done)
+        dones = dones[:-1, :] # remove the '__all__' entry at the end of the done dict
         # dones = torch.stack(batch.done)
         hidden_states = (torch.stack(batch.hidden_states), torch.stack(batch.cell_states))
 
@@ -218,13 +219,17 @@ class RNNTrainer():
 
         # probability ratio # TODO: where to get prev_hidden_state and _cell from?
         target_log_probs = self.policy_net.forward_target_network(observations, hidden_states)
+        target_log_probs = target_log_probs.view(-1, self.n_agents, self.n_actions)
         ratio: Tensor = torch.exp(action_log_probs - target_log_probs) 
         clipped_ratio: Tensor = torch.clamp(ratio, 1 - self.args.epsilon, 1 + self.args.epsilon)
         clipped_ratio = clipped_ratio.sum(dim=0)
 
 
         # Value Loss calculation
+        values = values.squeeze()
+        discounted_rewards = discounted_rewards.transpose(1, 0)  # change from (n_agents, batchsize) to (batchsize, n_agents)
         value_loss: Tensor = (values - discounted_rewards).pow(2)
+        dones = dones.transpose(1, 0) # change from (n_agents, batchsize) to (batchsize, n_agents)
         value_loss *= ~dones
         value_loss = value_loss.mean() #! original code has sum, but "E[]" is a mean function (?)
 
@@ -235,6 +240,7 @@ class RNNTrainer():
 
         # compute PPO loss
         ppo_loss: Tensor = CLIP_loss - self.args.value_coefficient * value_loss + self.args.entropy_coefficient * entropy
+        ppo_loss = ppo_loss.mean()
 
         grad_dict = {'ppo_loss': ppo_loss, 
                      'CLIP_loss': CLIP_loss,
