@@ -101,12 +101,9 @@ class LSTM(RNN):
         encoded_x: Tensor = self.fc1(observations)
         encoded_x = encoded_x.view(batch_size * self.n_agents, self.hid_size)
 
-        # TODO: heavy mismatch between hidden state and cell state -> get_episode likely issue
-        prev_hidden_states = prev_hidden_states[0].view(batch_size * self.n_agents, -1)
         prev_cell_states = prev_hidden_states[1].view(batch_size * self.n_agents, -1)
-
-        #! doesn't work
-        next_hidden_state, _ = self.lstm_unit(encoded_x, (prev_hidden_states[0], prev_hidden_states[1]))
+        prev_hidden_states = prev_hidden_states[0].view(batch_size * self.n_agents, -1)
+        next_hidden_state, _ = self.lstm_unit(encoded_x, (prev_hidden_states, prev_cell_states))
 
         action_log_probs = F.log_softmax(self.actor(next_hidden_state), dim=-1)
         return action_log_probs
