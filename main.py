@@ -86,6 +86,8 @@ if __name__ == '__main__':
         if not args.model_name:
             args.model_name = f'model_{time.strftime("%d%m%y_%H%M")}'
         args.save_dir = os.path.join(args.save_dir, args.model_name)
+        if not os.path.isdir(args.save_dir):
+            os.makedirs(args.save_dir)
 
     # logger initialisation
     if args.log:
@@ -116,6 +118,7 @@ if __name__ == '__main__':
         policynet.load_state_dict(torch.load(args.load))
 
     #? move this into the trainer class?
+    # TODO: more printouts to know where code is running / stuck
     # Main epoch training loop
     for epoch in range(args.epochs):
         epoch_start_time = time.time()
@@ -125,9 +128,12 @@ if __name__ == '__main__':
             batch_info = trainer.train_batch()
 
         epoch_time = time.time() - epoch_start_time
-        print(f'Epoch {epoch} \tReward {np.sum(batch_info["reward"])} \tTime {epoch_time}')
+        print(f'Epoch {epoch} \tReward {np.sum(batch_info["sum_reward"])} \tTime {epoch_time}')
 
         if args.save:
             if epoch % args.save_every == 0: 
-                trainer.save_model(f'{args.save_dir}model_state_{epoch}')
+                if args.save_whole_model:
+                    torch.save(policynet, os.path.join(args.save_dir, f'{args.model_name}_epoch_{epoch}.pt'))
+                else:
+                    torch.save(policynet.state_dict(), os.path.join(args.save_dir, f'{args.model_name}_state_dict_epoch_{epoch}.pt'))
         
