@@ -12,7 +12,7 @@ def sample_action(action_log_probs: Tensor) -> Tensor:
     Converts log-probabilities into probabilities and samples from the distribution. 
      -> action_probs: Tensor of length n_actions
     '''
-    action_probs = [x.exp() for x in action_log_probs]
+    action_probs = action_log_probs.exp()
     sampled_action: Tensor = torch.multinomial(action_probs, 1).detach()
     return sampled_action
 
