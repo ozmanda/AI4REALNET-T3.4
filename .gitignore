@@ -6,3 +6,4 @@ test.ipynb
 arglist.txt
 pseudo.py
 **/__pycache__/
+/models/
