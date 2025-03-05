@@ -4,6 +4,7 @@ from typing import Dict, Union, Tuple
 import torch
 from torch import Tensor
 
+
 def max_lowerthan(sequence, value):
     """ Find the largest item in sequence that is lower than a given value. """
     max = -np.inf
@@ -13,6 +14,7 @@ def max_lowerthan(sequence, value):
             max = sequence[idx]
         idx -= 1
     return max
+
 
 def min_greaterthan(sequence, value):
     """ Find the smallest item in sequence that is greater than a given value. """
@@ -54,13 +56,14 @@ def merge_dicts(source_dict: Dict, destination_dict: Dict) -> Dict:
             destination_dict[key] += value
 
         else: # covers the various list cases
-            if isinstance(value, list) and isinstance(destination_dict[key], list): # 2.3 mmerges two lists
+            if isinstance(value, list) and isinstance(destination_dict[key], list): # 2.3 merges two lists
                 destination_dict[key].extend(value)
             elif isinstance(destination_dict[key], list): # 2.3 one list, one number
                 destination_dict[key].append(value)
             else: # 2.4 two non-number values 
                 destination_dict[key] = [destination_dict[key], value]
     return destination_dict
+
 
 def dict_tuple_to_tensor(input_tuple: Tuple[Dict[int, Union[float, int, bool]], ...]) -> Tensor:
     """
