@@ -5,7 +5,7 @@ Two subclasses of Trainer from Trainer.py specifically for LSTM and RNN policies
 from training.Trainer import Trainer
 from torch import optim, Tensor
 import torch.nn as nn
-from typing import Tuple, List, Union, Dict
+from typing import Tuple, List, Union, Dict, Any
 import torch
 from networks.RNN import RNN, LSTM
 from flatland.envs.rail_env import RailEnv
@@ -15,7 +15,6 @@ from utils.action_utils import sample_action, action_tensor_to_dict
 from utils.obs import obs_dict_to_tensor
 from flatland.envs.rail_env import RailEnv
 from training.Trainer import Transition
-
 from utils.reward_utils import compute_discounted_reward_per_agent
 
 class RNNTrainer(): 
@@ -49,16 +48,22 @@ class RNNTrainer():
         self.target_actor_update_freq: int = args.target_update_freq
 
     
-    def get_episode(self) -> List[Transition]:
+    def get_episode(self) -> Tuple[List[Transition], Dict[str, Any]]:
         """
         Performs one episode in the environment and gathers the transitions
     
-        Return: List[Transitions]
-            - state     Dict[int, Dict]
-            - action    Dict[int, int]
-            - value     Dict[int, float]
-            - reward    Dict[int, float]
-            - done      Dict[int, bool]
+        Return: 
+            1. List[Transitions]
+                - state     Dict[int, Dict]
+                - action    Dict[int, int]
+                - value     Dict[int, float]
+                - reward    Dict[int, float]
+                - done      Dict[int, bool]
+
+            2. episode_info     Dict
+                - num_steps     int
+                - sum_reward    float   -> sum of all rewards
+
         """
         # for global observation: (n_agents, (env_height, env_width, 23))
         # for tree observation: (n_agents, 1)
@@ -78,7 +83,10 @@ class RNNTrainer():
             prev_hidden_state = self.policy_net.init_hidden(1)
 
         episode: List = []
-        step = 0
+        episode_info: Dict[str, Any] = dict()
+        episode_info['num_steps'] = 0
+        episode_info['agent_reward'] = [0]*self.n_agents
+        episode_info['sum_reward'] = 0
         while True: 
             # TODO: check dimension of action_log_probs
             if self.lstm:
@@ -86,7 +94,7 @@ class RNNTrainer():
             else: 
                 action_log_probs, value, next_hidden_state = self.policy_net(obs_tensor, prev_hidden_state)
 
-            if (step + 1) % self.args.detach_gap == 0:
+            if (episode_info['num_steps'] + 1) % self.args.detach_gap == 0:
                 next_hidden_state = next_hidden_state.detach()
                 if self.lstm:
                     next_cell_state = next_cell_state.detach()
@@ -100,6 +108,11 @@ class RNNTrainer():
             # create alive mask for agents that are already done to mask reward
             done_mask = [done_dict[agent_id] for agent_id in self.agent_ids]
 
+            # gather important stats
+            episode_info['sum_reward'] += sum(reward.values())
+            episode_info['agent_reward'] += list(reward.values())
+
+            # Define Transition tuple
             if self.lstm:
                 transition = Transition(obs_tensor, actions_tensor, action_log_probs, prev_hidden_state, prev_cell_state, value, reward, done_dict)
             else: 
@@ -107,11 +120,11 @@ class RNNTrainer():
             episode.append(transition)
             obs_dict = next_obs_dict
 
-            step += 1
-            if step >= self.args.max_steps or all(done_mask):
+            episode_info['num_steps'] += 1
+            if episode_info['num_steps'] >= self.args.max_steps or all(done_mask):
                 break
         
-        return episode 
+        return episode, episode_info
     
 
     def run_batch(self) -> Tuple[Transition, Dict]:
@@ -130,7 +143,8 @@ class RNNTrainer():
         batch_info['num_episodes'] = 0
 
         while len(batch) < self.args.batch_size:
-            episode: List[Transition] = self.get_episode()
+            episode, episode_info = self.get_episode()
+            batch_info = merge_dicts(episode_info, batch_info)
             batch_info['num_episodes'] += 1
             batch.extend(episode)
         
