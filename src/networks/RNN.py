@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
-from networks.MLP import MLP
+from src.networks.MLP import MLP
 from typing import Tuple
 from argparse import Namespace
 
@@ -15,7 +15,7 @@ class RNN(MLP):
         self.n_agents: int = self.args.n_agents
         self.hid_size: int = self.args.hid_size
 
-    def forward(self, observations: Tuple, prev_hidden_state: Tuple) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, observations: Tensor, prev_hidden_state: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """
         Forward pass of the RNN module.
     
@@ -28,7 +28,7 @@ class RNN(MLP):
             - value                 Tensor (batch_size * n_agents, 1)
             - next_hidden_state     Tensor (batch_size * n_agents, hid_size)
         """
-        observations = self.check_tensor_dimensions(observations)
+        observations = self.adjust_input_dimensions(observations)
         encoded_x: Tensor = self.fc1(observations)
         next_hidden_state: Tensor = F.tanh(self.fc2(prev_hidden_state) + encoded_x)
 
@@ -72,7 +72,7 @@ class LSTM(RNN):
             - next_hidden_state     Tensor (batch_size * n_agents, hid_size)
             - next_cell_state       Tensor (batch_size * n_agents, hid_size)
         """
-        observations = self.check_tensor_dimensions(observations)
+        observations = self.adjust_input_dimensions(observations)
 
         encoded_x: Tensor = self.fc1(observations)
         next_hidden_state, next_cell_state = self.lstm_unit(encoded_x, (prev_hidden_state, prev_cell_state))
