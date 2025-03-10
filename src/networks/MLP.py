@@ -27,22 +27,37 @@ class MLP(nn.Module):
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         ''' Outputs the log-probability of each action in a Tensor of length n_actions'''
-        x = self.check_tensor_dimensions(x)
+        x = self.adjust_input_dimensions(x)
+        print(x.size())
         x = nn.Tanh(self.fc1(x))
         h = nn.Tanh(sum([self.fc2(x), x]))
         v = self.critic(h)
         return F.log_softmax(self.actor(h), dim=-1), v
         
 
-    def check_tensor_dimensions(self, input_tensor: Tensor) -> Tensor: 
+    def adjust_input_dimensions(self, input: Union[Tensor, Tuple[Tensor, ...]]) -> Tensor: 
         """Check the dimensions of the input tensor and adjust for the multi-agent case. This function assumes dimensions of shape (batch_size, n_agents, n_features) or (batch_size, n_features)."""
-        if len(input_tensor.shape) == 3:
-            self.multiagent = True
-            self.n_agents = input_tensor.size(1)
-            input_tensor = input_tensor.view(-1, self.n_features)
-        if len(input_tensor.size) != 2:
-            raise ValueError(f'Input tensor has incorrect dimensions: {input_tensor.size()}')
-        return input_tensor
+
+        if isinstance(input, tuple):
+            if input[0].dim() == 3:
+                self.multiagent = True
+                self.n_agents = input[0].size(1)
+                input = tuple([input[i].view(-1, input[i].size(-1)) for i in range(len(input))])
+            if any([input[i].dim() != 2 for i in range(len(input))]):
+                raise ValueError(f'Input tensor has incorrect dimensions: {[input[i].size() for i in range(len(input))]}')
+            return input
+            
+        elif isinstance(input, Tensor):
+            if input.dim() != 2:
+                if input.dim() == 3:
+                    self.multiagent = True
+                    self.n_agents = input.size(1)
+                    input = input.view(-1, input.size(-1))
+                    return input
+                else:
+                    raise ValueError(f'Input tensor has incorrect dimensions: {input.size()}')
+        else:
+            raise ValueError(f'Input tensor is not a Tensor or Tuple: {type(input)}')
     
 
     def adjust_output_dimensions(self, output_tensor: Union[Tensor, Tuple]) -> Tensor:
