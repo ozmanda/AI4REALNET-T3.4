@@ -2,20 +2,20 @@
 Adapted from IC3Net trainer.py
 Two subclasses of Trainer from Trainer.py specifically for LSTM and RNN policies
 '''
-from training.Trainer import Trainer
-from torch import optim, Tensor
-import torch.nn as nn
-from typing import Tuple, List, Union, Dict, Any
 import torch
-from networks.RNN import RNN, LSTM
-from flatland.envs.rail_env import RailEnv
+import torch.nn as nn
 from argparse import Namespace
-from utils.utils import merge_dicts, dict_tuple_to_tensor
-from utils.action_utils import sample_action, action_tensor_to_dict
-from utils.obs import obs_dict_to_tensor
-from flatland.envs.rail_env import RailEnv
+from torch import optim, Tensor
+from typing import Tuple, List, Union, Dict, Any
+
 from training.Trainer import Transition
-from utils.reward_utils import compute_discounted_reward_per_agent
+from src.networks.RNN import RNN, LSTM
+from flatland.envs.rail_env import RailEnv
+
+from src.utils.utils import merge_dicts, dict_tuple_to_tensor
+from src.utils.action_utils import sample_action, action_tensor_to_dict
+from src.utils.obs import obs_dict_to_tensor
+from src.utils.reward_utils import compute_discounted_reward_per_agent
 
 class RNNTrainer(): 
     """ Trainer class for the no-communication recurrent policy networks, generalised to both the RNN and LSTM versions """

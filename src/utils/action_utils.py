@@ -1,11 +1,11 @@
 '''
 Adapted from IC3net action_utils.py
 '''
-from argparse import Namespace
 import torch
-from torch import Tensor
 import numpy as np
+from torch import Tensor
 from typing import List, Dict
+from argparse import Namespace
 
 def sample_action(action_log_probs: Tensor) -> Tensor:
     '''

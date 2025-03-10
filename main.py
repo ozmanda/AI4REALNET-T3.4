@@ -1,19 +1,23 @@
-from argparse import ArgumentParser, Namespace
-from training.RNNTrainer import RNNTrainer
-from training.CommNetTrainer import CommNetTrainer
-from training.Trainer import Trainer
-from networks.RNN import LSTM, RNN
-from networks.CommNet import CommNet
-from networks.MLP import MLP
-from environments.env_small import small_flatland_env
-from flatland.envs.rail_env import RailEnv
+import os
 import time
 import torch
 import numpy as np
-from utils.utils import merge_dicts
-import os
-from utils.log_utils import init_logger
 from typing import Dict, NamedTuple
+from argparse import ArgumentParser, Namespace
+
+from src.training.Trainer import Trainer
+from src.training.RNNTrainer import RNNTrainer
+from src.training.CommNetTrainer import CommNetTrainer
+
+from src.networks.MLP import MLP
+from src.networks.RNN import LSTM, RNN
+from src.networks.CommNet import CommNet
+
+from flatland.envs.rail_env import RailEnv
+from src.environments.env_small import small_flatland_env
+
+from src.utils.utils import merge_dicts
+from src.utils.log_utils import init_logger
 
 
 if __name__ == '__main__': 

@@ -2,20 +2,18 @@
 Adapted from IC3Net trainer.py to be a base trainer class, and trainer for MLP. The original code considers all network types during training. 
 '''
 
-import numpy as np
+from argparse import Namespace
 import torch
 from torch import optim, Tensor
-import torch.nn as nn
 from typing import Tuple, List, Dict
-from argparse import Namespace
-from utils.action_utils import sample_action
-from networks.MLP import MLP
-from flatland.envs.rail_env import RailEnv
 from collections import namedtuple
-from dataclasses import dataclass
+
+from src.utils.action_utils import sample_action
+from src.networks.MLP import MLP
+from flatland.envs.rail_env import RailEnv
+
 
 Transition = namedtuple('Transition', ('state', 'action', 'action_log_prob', 'hidden_states', 'cell_states', 'value', 'reward', 'done'))
-
 
 class Trainer():
     def __init__(self, args: Namespace, policy_net: MLP, env: RailEnv): 
