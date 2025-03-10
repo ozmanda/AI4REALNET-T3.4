@@ -6,5 +6,5 @@ test.ipynb
 arglist.txt
 pseudo.py
 **/__pycache__/
-/models/
+src/models/test/
 ./vscode/
