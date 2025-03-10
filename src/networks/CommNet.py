@@ -29,23 +29,19 @@ class CommNet(nn.Module):
         self.comm_passes: int = args.comm_passes
         self.recurrent: bool = args.recurrent
 
-        #! this is multi-action support, which is not needed for flatland
-        self.action_head = nn.Linear(args.hid_size, args.n_actions)
-
         # Set the standard deviation of the normal distribution with which initial weights for a linear layer are set
         self.init_std = args.init_std if hasattr(args, 'comm_init_std') else 0.2
 
         # Mask for communication
-        if self.args.comm:
-            self.comm_mask = torch.zeros(self.n_agents, self.n_agents)
-        else:
-            self.comm_mask = torch.ones(self.n_agents, self.n_agents) - torch.eye(self.n_agents)
+        self.comm_mask = torch.ones(self.n_agents, self.n_agents) - torch.eye(self.n_agents)
 
-        # Encoder
+        # Layers
         self.encoder = nn.Linear(obs_shape, self.hid_size)
-
+        self.actor = nn.Linear(self.hid_size, self.n_actions)
         if self.recurrent:
             self.LSTM_module = nn.LSTMCell(self.hid_size, self.hid_size) 
+        self.tanh = nn.Tanh()
+        self.critic = nn.Linear(self.hid_size, 1)
 
         # if weights are shared the linear layer is shared, otherwise one is instatiated for each pass
         if self.share_weights:
@@ -54,16 +50,15 @@ class CommNet(nn.Module):
         else:
             self.C_modules = [nn.Linear(self.hid_size, self.hid_size) for _ in range(self.comm_passes)]
 
+        # Communication module weight initialisations
         if args.comm_init == 'zeros':
             for i in range(self.comm_passes):
                 self.C_modules[i].weight.data.zero_()
-        self.tanh = nn.Tanh()
-        self.value_head = nn.Linear(self.hid_size, 1)
     
 
     def forward(self, state: Tensor, prev_hidden_state: Tensor = None, prev_cell_state: Tensor = None, info={}) -> Tuple[List[Tensor], Tensor, Tuple[Tensor, Tensor]]:
         '''
-        Forward function for the CommNet class
+        Forward function for the CommNet class #TODO: redo this docstring
 
         Arguments:
          - state: tuple: The state of the agents
@@ -78,7 +73,7 @@ class CommNet(nn.Module):
              - action_data: data needed to take next action #! data type?
              - value_head: Tensor #! (?)        
         '''
-        batch_size: int = state.size()[0]
+        batch_size: int = state.size(0)
         encoded_state, hidden_state, cell_state = self.forward_state_encoder(state, prev_hidden_state, prev_cell_state)
 
         num_agents_alive, agent_mask = self.get_agent_mask(batch_size, info)
@@ -191,23 +186,8 @@ class CommNet(nn.Module):
         Returns:
          - Tuple[torch.Tensor, torch.Tensor]: The hidden state of the network, with the first element being the hidden state and the second being the cell state. Gradients should be calculated for both during backpropagation.
         '''
-        #! the size of this seems wrong to me, as the batch size is not used in the LSTMCell
         return tuple((torch.zeros(batch_size * self.n_agents, self.hid_size, requires_grad=True),
                       torch.zeros(batch_size * self.n_agents, self.hid_size, requires_grad=True)))
-    
-        #! following text is from the torch.nn.LSTMCell documentation:
-        '''
-        Inputs: input, (h_0, c_0)
-        - **input** of shape `(batch, input_size)` or `(input_size)`: tensor containing input features
-        - **h_0** of shape `(batch, hidden_size)` or `(hidden_size)`: tensor containing the initial hidden state
-        - **c_0** of shape `(batch, hidden_size)` or `(hidden_size)`: tensor containing the initial cell state
-
-          If `(h_0, c_0)` is not provided, both **h_0** and **c_0** default to zero.
-
-        Outputs: (h_1, c_1)
-        - **h_1** of shape `(batch, hidden_size)` or `(hidden_size)`: tensor containing the next hidden state
-        - **c_1** of shape `(batch, hidden_size)` or `(hidden_size)`: tensor containing the next cell state
-        '''
     
 
     def init_weights(self, m: nn.Linear) -> None:
