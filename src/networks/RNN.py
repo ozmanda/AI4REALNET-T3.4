@@ -15,6 +15,7 @@ class RNN(MLP):
         self.n_agents: int = self.args.n_agents
         self.hid_size: int = self.args.hid_size
 
+
     def forward(self, observations: Tensor, prev_hidden_state: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """
         Forward pass of the RNN module.
@@ -35,6 +36,19 @@ class RNN(MLP):
         v = self.critic(next_hidden_state)
 
         return self.adjust_output_dimensions((F.log_softmax(self.actor(next_hidden_state), dim=-1), v, next_hidden_state))
+    
+
+    def forward_target_network(self, observations: Tensor, prev_hidden_state: Tensor) -> Tensor:
+        """
+        Forward pass through the target actor network. Identical to self.forward, but only outputs the action logprobs. 
+        """
+        # Handle single observations by adding a singleton dimension
+        if observations.dim() == 2:
+            observations = observations.unsqueeze(0)
+        encoded_x: Tensor = self.fc1(observations)
+        next_hidden_state: Tensor = F.tanh(self.fc2(prev_hidden_state) + encoded_x)
+        action_log_probs = F.log_softmax(self.actor_target(next_hidden_state), dim=-1)
+        return self.adjust_output_dimensions(action_log_probs)
 
 
     def init_hidden(self, batch_size: int) -> Tensor:
