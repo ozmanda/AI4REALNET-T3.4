@@ -100,7 +100,7 @@ class LSTM(RNN):
         prev_hidden_states = prev_hidden_states[0].view(batch_size * self.n_agents, -1)
         next_hidden_state, _ = self.lstm_unit(encoded_x, (prev_hidden_states, prev_cell_states))
 
-        action_log_probs = F.log_softmax(self.actor(next_hidden_state), dim=-1)
+        action_log_probs = F.log_softmax(self.actor_target(next_hidden_state), dim=-1)
         return self.adjust_output_dimensions(action_log_probs)
     
 
