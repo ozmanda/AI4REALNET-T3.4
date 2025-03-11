@@ -74,7 +74,11 @@ class CommNet(nn.Module):
              - value_head: Tensor #! (?)        
         '''
         batch_size: int = state.size(0)
-        encoded_state, hidden_state, cell_state = self.forward_state_encoder(state, prev_hidden_state, prev_cell_state)
+        encoded_state = self.forward_state_encoder(state, prev_hidden_state, prev_cell_state)
+
+        if self.recurrent:
+            hidden_state: Tensor = prev_hidden_state
+            cell_state: Tensor = prev_cell_state
 
         num_agents_alive, agent_mask = self.get_agent_mask(batch_size, info)
 
@@ -100,7 +104,7 @@ class CommNet(nn.Module):
             if hasattr(self.args, 'comm_mode') and self.args.comm_mode == 'avg' and num_agents_alive > 1:
                 comm = comm / (num_agents_alive - 1) #?
 
-            # mask communication from and to dead agents
+            # mask communication from and to dead agents # TODO: check if transpose is necessary
             comm = comm * agent_mask
             comm = comm * agent_mask_transpose
             
@@ -118,7 +122,7 @@ class CommNet(nn.Module):
                 hidden_state = sum([encoded_state, self.C_modules[i](hidden_state), c])
                 hidden_state = self.tanh(hidden_state)
 
-        value_head = self.value_head(hidden_state)
+        value_head = self.critic(hidden_state)
         hidden_state = hidden_state.view(batch_size, self.n_agents, self.hid_size)
 
         action_probs: Tensor = F.softmax(self.action_head(hidden_state), dim=-1)
@@ -129,29 +133,20 @@ class CommNet(nn.Module):
             return action_probs, value_head, (None, None)
 
 
-    def forward_state_encoder(self, state: Tensor, prev_hidden_state: Tensor = None, prev_cell_state: Tensor = None) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward_state_encoder(self, state: Tensor) -> Tensor:
         '''
         Forward pass through the encoder network.
 
         Arguments:
          - state: torch.Tensor: the current state of the agents (B x N x obs_shape)
-         - hidden_state: torch.Tensor: the hidden state of the network (for recurrent models) -> (B x N x hid_size)
 
         Returns:
          - encoded state: torch.Tensor: The encoded state (B x N x hid_size)
-         - hidden_state: torch.Tensor: The hidden state of the network (B*N x hid_size)
-         - cell_state: torch.Tensor: The cell state of the network (B*N x hid_size)
         '''
         encoded_state: Tensor = self.encoder(state)
-        cell_state: Tensor = prev_cell_state
+        encoded_state = self.tanh(encoded_state)
 
-        if self.recurrent:
-            hidden_state = prev_hidden_state
-        else:
-            encoded_state = self.tanh(encoded_state)
-            hidden_state = encoded_state
-
-        return encoded_state, hidden_state, cell_state
+        return encoded_state
     
 
     def get_agent_mask(self, batch_size: int, info: dict) -> Tuple[int, Tensor]:
