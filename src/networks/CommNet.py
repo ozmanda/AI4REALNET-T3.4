@@ -25,9 +25,11 @@ class CommNet(nn.Module):
 
         self.args = args
         self.n_agents: int = args.n_agents
+        self.n_actions: int = args.n_actions
         self.hid_size: int = args.hid_size
         self.comm_passes: int = args.comm_passes
         self.recurrent: bool = args.recurrent
+        self.share_weights: bool = args.share_weights
 
         # Set the standard deviation of the normal distribution with which initial weights for a linear layer are set
         self.init_std = args.init_std if hasattr(args, 'comm_init_std') else 0.2
@@ -125,7 +127,7 @@ class CommNet(nn.Module):
         value_head = self.critic(hidden_state)
         hidden_state = hidden_state.view(batch_size, self.n_agents, self.hid_size)
 
-        action_probs: Tensor = F.softmax(self.action_head(hidden_state), dim=-1)
+        action_probs: Tensor = F.softmax(self.actor(hidden_state), dim=-1)
 
         if self.args.recurrent:
             return action_probs, value_head, (hidden_state.clone(), cell_state.clone())
