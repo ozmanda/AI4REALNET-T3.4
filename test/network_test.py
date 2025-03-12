@@ -5,6 +5,7 @@ from argparse import Namespace
 import torch
 from src.networks.MLP import MLP
 from src.networks.RNN import RNN, LSTM
+from src.networks.CommNet import CommNet
 
 class NetworkTest(unittest.TestCase):
     def test_MLP_reshaping(self):
@@ -107,7 +108,7 @@ class NetworkTest(unittest.TestCase):
 
         # Single-Agent Forward Pass
         prev_hidden_state_1 = torch.randn(args.batchsize, args.hid_size)
-        prev_cell_state_1 = prev_hidden_state_1.copy()
+        prev_cell_state_1 = prev_hidden_state_1.clone()
         correct_tensor_1 = torch.randn(args.batchsize, args.num_inputs)
         actions, values, next_hidden_state, next_cell_state = network(correct_tensor_1, prev_hidden_state_1, prev_cell_state_1)
         self.assertEqual(actions.size(), (args.batchsize, args.n_actions))
@@ -121,7 +122,7 @@ class NetworkTest(unittest.TestCase):
 
         # Multi-Agent Forward Pass
         prev_hidden_state_2 = torch.randn(args.batchsize, args.n_agents, args.hid_size)
-        prev_cell_state_2 = prev_hidden_state_2.copy()
+        prev_cell_state_2 = prev_hidden_state_2.clone()
         correct_tensor_2 = torch.randn(args.batchsize, args.n_agents, args.num_inputs)
         actions, values, next_hidden_state, next_cell_state = network(correct_tensor_2, prev_hidden_state_2, prev_cell_state_2)
         self.assertEqual(actions.size(), (args.batchsize * args.n_agents, args.n_actions))
@@ -143,6 +144,47 @@ class NetworkTest(unittest.TestCase):
         hidden_state_init, cell_state_init = network.init_hidden(args.batchsize)
         self.assertEqual(hidden_state_init.size(), (args.batchsize * args.n_agents, args.hid_size))
         self.assertEqual(cell_state_init.size(), hidden_state_init.size())
+
+
+    def test_CommNet(self): 
+        args = Namespace(hid_size=128, n_actions=5, batchsize = 10, n_agents = 8, num_inputs = 16, comm_passes = 3, recurrent=True)
+        network = CommNet(args, args.num_inputs)
+
+        # Hidden State Initialisation
+        output = network.init_hidden(args.batchsize)
+        self.assertEqual(output[0].size(), (args.batchsize * args.n_agents, args.hid_size))
+        self.assertEqual(output[1].size(), output[0].size())
+
+        # Forward Pass
+        state = torch.randn(args.batchsize, args.n_agents, args.num_inputs)
+        prev_hidden_state = torch.randn(args.batchsize, args.n_agents, args.hid_size)
+        prev_cell_state = prev_hidden_state.clone()
+        actions, value, next_hidden_state, next_cell_state = network(state, prev_hidden_state, prev_cell_state)
+        self.assertEqual(actions.size(), (args.batchsize, args.n_agents, args.n_actions))
+        self.assertEqual(value.size(), (args.batchsize, args.n_agents, 1))
+        self.assertEqual(next_hidden_state.size(), (args.batchsize, args.n_agents, args.hid_size))
+        self.assertEqual(next_cell_state.size(), next_hidden_state.size())
+
+        # Error Handling
+        incorrect_tensor = torch.randn(args.batchsize, args.n_agents, args.num_inputs, 4)
+        with self.assertRaises(ValueError):
+            network(incorrect_tensor, prev_hidden_state, prev_cell_state)
+            network(state, incorrect_tensor, prev_cell_state)
+            network(state, prev_hidden_state, incorrect_tensor)
+
+        # Forward Target Network
+        actions = network.forward_target_network(state, prev_hidden_state)
+        self.assertEqual(actions.size(), (args.batchsize, args.n_agents, args.n_actions))
+
+        # Agent Mask
+        info = {'comm_action': torch.randn(args.batchsize, args.n_agents, args.n_agents), 'alive_mask': torch.zeros(args.batchsize, args.n_agents)}
+        num_agents_alive, agent_mask = network.get_agent_mask(args.batchsize, info)
+        self.assertEqual(num_agents_alive, 0)
+        self.assertEqual(agent_mask.size(), (args.batchsize, args.n_agents, args.n_agents))
+
+        info = {'comm_action': torch.randn(args.batchsize, args.n_agents, args.n_agents), 'alive_mask': torch.ones(args.batchsize, args.n_agents)}
+        num_agents_alive, agent_mask = network.get_agent_mask(args.batchsize, info)
+        self.assertEqual(num_agents_alive, args.n_agents)
 
 
 if __name__== '__main__':
