@@ -23,19 +23,21 @@ class MLP(nn.Module):
         self.actor = nn.Linear(args.hid_size, args.n_actions)
         self.actor_target = nn.Linear(args.hid_size, args.n_actions)
         self.critic = nn.Linear(args.hid_size, 1)
+        self.tanh = nn.Tanh()
 
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         ''' Outputs the log-probability of each action in a Tensor of length n_actions'''
         x = self.adjust_input_dimensions(x)
-        print(x.size())
-        x = nn.Tanh(self.fc1(x))
-        h = nn.Tanh(sum([self.fc2(x), x]))
+        encoded_x = self.fc1(x)
+        x = self.tanh(encoded_x)
+        h = self.tanh(sum([self.fc2(x), x]))
         v = self.critic(h)
-        return F.log_softmax(self.actor(h), dim=-1), v
+        output = self.adjust_output_dimensions((F.log_softmax(self.actor(h), dim=-1), v))
+        return output
         
 
-    def adjust_input_dimensions(self, input: Union[Tensor, Tuple[Tensor, ...]]) -> Tensor: 
+    def adjust_input_dimensions(self, input: Union[Tensor, Tuple[Tensor, ...]]) -> Union[Tensor, Tuple]: 
         """Check the dimensions of the input tensor and adjust for the multi-agent case. This function assumes dimensions of shape (batch_size, n_agents, n_features) or (batch_size, n_features)."""
 
         if isinstance(input, tuple):
@@ -53,14 +55,14 @@ class MLP(nn.Module):
                     self.multiagent = True
                     self.n_agents = input.size(1)
                     input = input.view(-1, input.size(-1))
-                    return input
                 else:
                     raise ValueError(f'Input tensor has incorrect dimensions: {input.size()}')
+            return input
         else:
             raise ValueError(f'Input tensor is not a Tensor or Tuple: {type(input)}')
     
 
-    def adjust_output_dimensions(self, output_tensor: Union[Tensor, Tuple]) -> Tensor:
+    def adjust_output_dimensions(self, output_tensor: Union[Tensor, Tuple[Tensor, ...]]) -> Union[Tensor, Tuple]:
         """ Return the output tensor(s) to the original dimensions for the multi-agent case, also handles multiple outputs in the form of a tuple. """
         if self.multiagent:
             if isinstance(output_tensor, tuple):
