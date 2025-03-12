@@ -14,6 +14,7 @@ class RNN(MLP):
         super().__init__(args, num_inputs)
         self.n_agents: int = self.args.n_agents
         self.hid_size: int = self.args.hid_size
+        self.multiagent: bool = False
 
 
     def forward(self, observations: Tensor, prev_hidden_state: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
@@ -29,7 +30,7 @@ class RNN(MLP):
             - value                 Tensor (batch_size * n_agents, 1)
             - next_hidden_state     Tensor (batch_size * n_agents, hid_size)
         """
-        observations = self.adjust_input_dimensions(observations)
+        observations, prev_hidden_state = self.adjust_input_dimensions((observations, prev_hidden_state))
         encoded_x: Tensor = self.fc1(observations)
         next_hidden_state: Tensor = F.tanh(self.fc2(prev_hidden_state) + encoded_x)
 
@@ -43,8 +44,7 @@ class RNN(MLP):
         Forward pass through the target actor network. Identical to self.forward, but only outputs the action logprobs. 
         """
         # Handle single observations by adding a singleton dimension
-        if observations.dim() == 2:
-            observations = observations.unsqueeze(0)
+        observations, prev_hidden_state = self.adjust_input_dimensions((observations, prev_hidden_state))
         encoded_x: Tensor = self.fc1(observations)
         next_hidden_state: Tensor = F.tanh(self.fc2(prev_hidden_state) + encoded_x)
         action_log_probs = F.log_softmax(self.actor_target(next_hidden_state), dim=-1)
@@ -86,7 +86,7 @@ class LSTM(RNN):
             - next_hidden_state     Tensor (batch_size * n_agents, hid_size)
             - next_cell_state       Tensor (batch_size * n_agents, hid_size)
         """
-        observations = self.adjust_input_dimensions(observations)
+        observations, prev_hidden_state, prev_cell_state = self.adjust_input_dimensions((observations, prev_hidden_state, prev_cell_state))
 
         encoded_x: Tensor = self.fc1(observations)
         next_hidden_state, next_cell_state = self.lstm_unit(encoded_x, (prev_hidden_state, prev_cell_state))
@@ -98,22 +98,14 @@ class LSTM(RNN):
         return self.adjust_output_dimensions((action_log_probs, v, next_hidden_state.clone(), next_cell_state.clone()))
     
 
-    def forward_target_network(self, observations: Tensor, prev_hidden_states: Tuple[Tensor, Tensor]) -> Tensor:
+    def forward_target_network(self, observations: Tensor, prev_hidden_states: Tensor, prev_cell_states: Tensor) -> Tensor:
         """
         Forward pass through the target actor network. Identical to self.forward, but only outputs the action logprobs. 
         """
-        # Handle single observations by adding a singleton dimension
-        if observations.dim() == 2:
-            observations = observations.unsqueeze(0)
-        batch_size: int = observations.size(0)
+        observations, prev_hidden_states, prev_cell_states = self.adjust_input_dimensions((observations, prev_hidden_states, prev_cell_states))
 
         encoded_x: Tensor = self.fc1(observations)
-        encoded_x = encoded_x.view(batch_size * self.n_agents, self.hid_size)
-
-        prev_cell_states = prev_hidden_states[1].view(batch_size * self.n_agents, -1)
-        prev_hidden_states = prev_hidden_states[0].view(batch_size * self.n_agents, -1)
         next_hidden_state, _ = self.lstm_unit(encoded_x, (prev_hidden_states, prev_cell_states))
-
         action_log_probs = F.log_softmax(self.actor_target(next_hidden_state), dim=-1)
         return self.adjust_output_dimensions(action_log_probs)
     

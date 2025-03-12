@@ -68,18 +68,6 @@ class NetworkTest(unittest.TestCase):
         args = Namespace(hid_size=128, n_actions=5, batchsize = 10, n_agents = 8, num_inputs = 16)
         network: RNN = RNN(args, args.num_inputs)
 
-        # Single-Agent Forward Pass
-        prev_hidden_state_1 = torch.randn(args.batchsize, args.hid_size)
-        correct_tensor_1 = torch.randn(args.batchsize, args.num_inputs)
-        actions, values, next_hidden_state = network(correct_tensor_1, prev_hidden_state_1)
-        self.assertEqual(actions.size(), (args.batchsize, args.n_actions))
-        self.assertEqual(values.size(), (args.batchsize, 1))
-        self.assertEqual(next_hidden_state.size(), (args.batchsize, args.hid_size))
-
-        # Single-Agent Target Network Forward Pass
-        actions = network.forward_target_network(correct_tensor_1, prev_hidden_state_1)
-        self.assertEqual(actions.size(), (args.batchsize, args.n_actions))
-
         # Multi-Agent Forward Pass
         prev_hidden_state_2 = torch.randn(args.batchsize, args.n_agents, args.hid_size)
         correct_tensor_2 = torch.randn(args.batchsize, args.n_agents, args.num_inputs)
@@ -106,32 +94,23 @@ class NetworkTest(unittest.TestCase):
         args = Namespace(hid_size=128, n_actions=5, batchsize = 10, n_agents = 8, num_inputs = 16)
         network: LSTM = LSTM(args, args.num_inputs)
 
-        # Single-Agent Forward Pass
-        prev_hidden_state_1 = torch.randn(args.batchsize, args.hid_size)
-        prev_cell_state_1 = prev_hidden_state_1.clone()
-        correct_tensor_1 = torch.randn(args.batchsize, args.num_inputs)
-        actions, values, next_hidden_state, next_cell_state = network(correct_tensor_1, prev_hidden_state_1, prev_cell_state_1)
-        self.assertEqual(actions.size(), (args.batchsize, args.n_actions))
-        self.assertEqual(values.size(), (args.batchsize, 1))
-        self.assertEqual(next_hidden_state.size(), (args.batchsize, args.hid_size))
-        self.assertEqual(next_cell_state.size(), next_hidden_state.size())
-
-        # Single-Agent Target Network Forward Pass
-        actions = network.forward_target_network(correct_tensor_1, prev_hidden_state_1)
-        self.assertEqual(actions.size(), (args.batchsize, args.n_actions))
+        # Hidden State Initialiser
+        hidden_state_init, cell_state_init = network.init_hidden(args.batchsize)
+        self.assertEqual(hidden_state_init.size(), (args.batchsize * args.n_agents, args.hid_size))
+        self.assertEqual(cell_state_init.size(), hidden_state_init.size())
 
         # Multi-Agent Forward Pass
         prev_hidden_state_2 = torch.randn(args.batchsize, args.n_agents, args.hid_size)
         prev_cell_state_2 = prev_hidden_state_2.clone()
         correct_tensor_2 = torch.randn(args.batchsize, args.n_agents, args.num_inputs)
         actions, values, next_hidden_state, next_cell_state = network(correct_tensor_2, prev_hidden_state_2, prev_cell_state_2)
-        self.assertEqual(actions.size(), (args.batchsize * args.n_agents, args.n_actions))
-        self.assertEqual(values.size(), (args.batchsize * args.n_agents, 1))
-        self.assertEqual(next_hidden_state.size(), (args.batchsize * args.n_agents, args.hid_size))
+        self.assertEqual(actions.size(), (args.batchsize, args.n_agents, args.n_actions))
+        self.assertEqual(values.size(), (args.batchsize, args.n_agents, 1))
+        self.assertEqual(next_hidden_state.size(), (args.batchsize, args.n_agents, args.hid_size))
         self.assertEqual(next_cell_state.size(), next_hidden_state.size())
 
         # Multi-Agent Target Network Forward Pass
-        actions = network.forward_target_network(correct_tensor_2, prev_hidden_state_2)
+        actions = network.forward_target_network(correct_tensor_2, prev_hidden_state_2, prev_cell_state_2)
         self.assertEqual(actions.size(), (args.batchsize, args.n_agents, args.n_actions))
 
         # Error Handling Forward Pass (Target and Local)
@@ -139,11 +118,6 @@ class NetworkTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             network(incorrect_tensor_1, prev_hidden_state_2, prev_cell_state_2)
             network.forward_target_network(incorrect_tensor_1, prev_hidden_state_2, prev_cell_state_2)
-
-        # Hidden State Initialiser
-        hidden_state_init, cell_state_init = network.init_hidden(args.batchsize)
-        self.assertEqual(hidden_state_init.size(), (args.batchsize * args.n_agents, args.hid_size))
-        self.assertEqual(cell_state_init.size(), hidden_state_init.size())
 
 
     def test_CommNet(self): 

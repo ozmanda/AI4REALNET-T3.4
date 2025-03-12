@@ -15,7 +15,7 @@ class MLP(nn.Module):
         Basic MLP network with fully connected layers and action / value heads. The action
         and value heads are synonymous with actor and critic networks, respectively. 
         """
-        self.multiagent = False
+        self.n_agents = args.n_agents
         self.args = args
         self.n_features = num_inputs
         self.fc1 = nn.Linear(self.n_features, args.hid_size)
@@ -62,11 +62,20 @@ class MLP(nn.Module):
             raise ValueError(f'Input tensor is not a Tensor or Tuple: {type(input)}')
     
 
-    def adjust_output_dimensions(self, output_tensor: Union[Tensor, Tuple[Tensor, ...]]) -> Union[Tensor, Tuple]:
-        """ Return the output tensor(s) to the original dimensions for the multi-agent case, also handles multiple outputs in the form of a tuple. """
-        if self.multiagent:
-            if isinstance(output_tensor, tuple):
-                return tuple([output_tensor[i].view(-1, self.n_agents, output_tensor[i].size(1)) for i in range(len(output_tensor))])
-            else: 
-                return output_tensor.view(-1, self.n_agents, output_tensor.size(1))
+    def adjust_output_dimensions(self, output: Union[Tensor, Tuple[Tensor, ...]]) -> Union[Tensor, Tuple]:
+        """ Return the output tensor(s) to the original dimensions for the multi-agent case, also handles multiple outputs in the form of a tuple. """            
+        if isinstance(output, tuple):
+            if any([output[i].dim() != 2 for i in range(len(output))]):
+                raise ValueError(f'At least one input tensor has incorrect dimensions: {[output[i].size() for i in range(len(output))]}')
+            
+            output = tuple([output[i].view(-1, self.n_agents, output[i].size(-1)) for i in range(len(output))])
+            
+        elif isinstance(output, Tensor):
+            if output.dim() == 2:
+                    output = output.view(-1, self.n_agents, output.size(-1))
+            else:
+                raise ValueError(f'Input tensor has incorrect dimensions: {output.size()}')
+        else:
+            raise ValueError(f'Input tensor is not a Tensor or Tuple: {type(output)}')
         
+        return output
