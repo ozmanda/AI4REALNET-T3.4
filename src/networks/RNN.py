@@ -94,7 +94,6 @@ class LSTM(RNN):
         v = self.critic(next_hidden_state)
         action_log_probs = F.log_softmax(self.actor(next_hidden_state), dim=-1)
 
-        # TODO: shape everything back to (batchsize, n_agents, hid_size) with inherited MLP function
         return self.adjust_output_dimensions((action_log_probs, v, next_hidden_state.clone(), next_cell_state.clone()))
     
 
