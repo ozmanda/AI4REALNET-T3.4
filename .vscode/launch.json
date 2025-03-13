@@ -12,10 +12,12 @@
             "program": "main.py",
             "console": "integratedTerminal",
             "args": [
-                "--epochs", "10",
+                "--epochs", "6",
                 "--epoch_size", "50",
-                "--batch_size", "500",
-                "--target_update_freq", "5"
+                "--batch_size", "200",
+                "--target_update_freq", "5",
+                "--model_name", "test",
+                "--save_every", "2"
             ]
         }
     ]
