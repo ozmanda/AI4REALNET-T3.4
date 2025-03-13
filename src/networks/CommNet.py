@@ -76,52 +76,24 @@ class CommNet(nn.Module):
              - value_head: Tensor #! (?)        
         '''
         batch_size: int = state.size(0)
-        encoded_state = self.forward_state_encoder(state, prev_hidden_state, prev_cell_state)
+        encoded_state = self.forward_state_encoder(state)
 
-        if self.recurrent:
-            hidden_state: Tensor = prev_hidden_state
-            cell_state: Tensor = prev_cell_state
-
-        num_agents_alive, agent_mask = self.get_agent_mask(batch_size, info)
-
-        # Hard Attention -> action whether an agent communications or not #! ????
-        if self.args.hard_attention:
-            comm_action: Tensor = torch.tensor(info['comm_action'])
-            comm_action_mask: Tensor = comm_action.expand(batch_size, self.n_agents, self.n_agents).unsqueeze(-1) # (B x N x N x 1)
-            agent_mask *= comm_action_mask.double()
-
-        agent_mask_transpose = agent_mask.transpose(1, 2) # (B x N x N x 1) -> mirrors around the diagonal
+        num_agents_alive, agent_mask = self._get_agent_mask(batch_size, info)
+        self.agent_mask = agent_mask 
+        self.n_agent_alive = num_agents_alive
+        
 
         for i in range(self.comm_passes):
-            comm = hidden_state.view(batch_size, self.n_agents, self.hid_size) if self.args.recurrent else hidden_state # (B x N x hid_size)
-            comm = comm.unsqueeze(-2).expand(-1, self.n_agents, self.n_agents, self.hid_size) # (B x N x 1 x hid_size) -> (B x N x N x hid_size)
-
-            mask = self.comm_mask.view(1, self.n_agents, self.n_agents)
-            mask = mask.expand(comm.shape[0], self.n_agents, self.n_agents)
-            mask = mask.unsqueeze(-1) # (B x N x N x 1)
-
-            mask = mask.expand_as(comm) # (B x N x N x hid_size)
-            comm = comm * mask
-
-            if hasattr(self.args, 'comm_mode') and self.args.comm_mode == 'avg' and num_agents_alive > 1:
-                comm = comm / (num_agents_alive - 1) #?
-
-            # mask communication from and to dead agents # TODO: check if transpose is necessary
-            comm = comm * agent_mask
-            comm = comm * agent_mask_transpose
-            
-            # Combine all of C_j for an ith agent -> h_j
-            comm_sum = comm.sum(dim=1) # (B x N x hid_size)
-            c = self.C_modules[i](comm_sum) 
+            comm_input: Tensor = self._comm_pass() #!
 
             if self.args.recurrent:
                 # skip connection: input is the combination of comm matrix and encoded state for all agents
-                input = encoded_state + c
+                input = encoded_state + comm_input
                 input = input.view(batch_size * self.n_agents, self.hid_size)
-                hidden_state, cell_state = self.LSTM_module(input, (hidden_state, cell_state))
+                hidden_state, cell_state = self.LSTM_module(input, (prev_hidden_state, prev_cell_state)) #TODO: check dimensions
 
             else: 
-                hidden_state = sum([encoded_state, self.C_modules[i](hidden_state), c])
+                hidden_state = sum([encoded_state, self.C_modules[i](prev_hidden_state), comm_input])
                 hidden_state = self.tanh(hidden_state)
 
         value_head = self.critic(hidden_state)
@@ -151,7 +123,35 @@ class CommNet(nn.Module):
         return encoded_state
     
 
-    def get_agent_mask(self, batch_size: int, info: dict) -> Tuple[int, Tensor]:
+    def _comm_pass(self, comm_pass: int, prev_hidden_state: Tensor) -> Tensor: 
+        """
+        Passes the hidden state through the comm network
+
+        Inputs:
+            - prev_hidden_state: Tensor (B x N x hid_size)
+        """
+        comm = prev_hidden_state.unsqueeze(-2).expand(-1, self.n_agents, self.n_agents, self.hid_size) # (B x N x 1 x hid_size) -> (B x N x N x hid_size)
+
+        mask = self.comm_mask.view(1, self.n_agents, self.n_agents)
+        mask = mask.expand(comm.shape[0], self.n_agents, self.n_agents)
+        mask = mask.unsqueeze(-1) # (B x N x N x 1)
+
+        mask = mask.expand_as(comm) # (B x N x N x hid_size)
+        comm = comm * mask
+
+        if hasattr(self.args, 'comm_mode') and self.args.comm_mode == 'avg' and self.n_agents_alive > 1:
+            comm = comm / (self.n_agents_alive - 1) #?
+
+        # mask communication from and to dead agents 
+        comm = comm * self.agent_mask
+        
+        # Combine all of C_j for an ith agent
+        comm_sum = comm.sum(dim=1) # (B x N x hid_size)
+        c = self.C_modules[comm_pass](comm_sum) 
+        return c
+    
+
+    def _get_agent_mask(self, batch_size: int, info: dict) -> Tuple[int, Tensor]:
         '''
         Get the mask for the alive agents.
 
@@ -169,6 +169,15 @@ class CommNet(nn.Module):
 
         agent_mask = agent_mask.view(1, 1, self.n_agents)
         agent_mask = agent_mask.expand(batch_size, self.n_agents, self.n_agents).unsqueeze(-1)
+
+        # Hard Attention -> action whether an agent communications or not #! ????
+        if self.args.hard_attention:
+            comm_action: Tensor = torch.tensor(info['comm_action'])
+            comm_action_mask: Tensor = comm_action.expand(batch_size, self.n_agents, self.n_agents).unsqueeze(-1) # (B x N x N x 1)
+            agent_mask *= comm_action_mask.double()
+
+        agent_mask_transpose = agent_mask.transpose(1, 2) # (B x N x N x 1) -> mirrors around the diagonal
+        agent_mask = agent_mask * agent_mask_transpose    # TODO: check that this change is correct     
 
         return num_agents_alive, agent_mask
 
