@@ -49,11 +49,12 @@ if __name__ == '__main__':
     parser.add_argument('--max_tree_depth', type=int, help='Maximum depth of the tree observation if tree observation is used', default=3)
 
     # Network Parameters
-    parser.add_argument('--comm', type=bool, help='Whether to use communication in the network', default=False)
     parser.add_argument('--hid_size', type=int, help='Size of the hidden layers', default=64)
     parser.add_argument('--recurrent', type=bool, help='Whether to use a recurrent network', default=True)
     parser.add_argument('--rnn_type', type=str, help='Type of RNN to use', default='lstm')
 
+    parser.add_argument('--comm', type=bool, help='Whether to use communication in the network', default=False)
+    parser.add_argument('--comm_passes', type=int, help='Number of passes through the communication network', default=1)
     # Learning Parameters
     parser.add_argument('--learning_rate', type=float, help='Learning rate for the optimizer', default=1e-2)
     parser.add_argument('--detach_gap', type=int, help='Number of steps before detaching the hidden state', default=1)
