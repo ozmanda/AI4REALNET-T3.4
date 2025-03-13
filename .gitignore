@@ -1,10 +1,3 @@
-.gitignore
 .venv/
-training_parameters.txt
-archive
-test.ipynb
-arglist.txt
-pseudo.py
 **/__pycache__/
 src/models/test/
-./vscode/
