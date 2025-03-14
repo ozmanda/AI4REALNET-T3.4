@@ -32,7 +32,7 @@ class CommNet(nn.Module):
         self.share_weights: bool = args.share_weights
 
         # Set the standard deviation of the normal distribution with which initial weights for a linear layer are set
-        self.init_std = args.init_std if hasattr(args, 'comm_init_std') else 0.2
+        self.init_std = args.comm_init_std if hasattr(args, 'comm_init_std') else 0.2
 
         # Mask for communication
         self.comm_mask = torch.ones(self.n_agents, self.n_agents) - torch.eye(self.n_agents)
@@ -90,7 +90,7 @@ class CommNet(nn.Module):
                 # skip connection: input is the combination of comm matrix and encoded state for all agents
                 input = encoded_state + comm_input
                 input = input.view(batch_size * self.n_agents, self.hid_size)
-                hidden_state, cell_state = self.LSTM_module(input, (prev_hidden_state, prev_cell_state)) #TODO: check dimensions
+                hidden_state, cell_state = self.LSTM_module(input, (prev_hidden_state, prev_cell_state))
 
             else: 
                 hidden_state = sum([encoded_state, self.C_modules[i](prev_hidden_state), comm_input])
@@ -123,9 +123,50 @@ class CommNet(nn.Module):
         return encoded_state
     
 
+    def forward_target_network(self, state: Tensor, prev_hidden_state: Tensor = None, prev_cell_state: Tensor = None, info={}) -> Tuple[List[Tensor], Tensor, Tuple[Tensor, Tensor]]:
+        """
+        Performs a forward pass through the target actor network. 
+
+        Arguments:
+         - state: tuple: The state of the agents
+         - prev_hidden_state: Tensor: previous hidden state and in the case of LSTM the cell state
+         - prev_cell_state: Tensor: previous cell state in the case of LSTM
+         - info: dict: Additional information to pass through the
+
+        Returns: 
+         - action_probs: Tensor: The action probabilities for the agents
+        """
+        batch_size: int = state.size(0)
+        encoded_state = self.forward_state_encoder(state)
+
+        num_agents_alive, agent_mask = self._get_agent_mask(batch_size, info)
+        self.agent_mask = agent_mask 
+        self.n_agent_alive = num_agents_alive
+        
+
+        for i in range(self.comm_passes):
+            comm_input: Tensor = self._comm_pass() #!
+
+            if self.args.recurrent:
+                # skip connection: input is the combination of comm matrix and encoded state for all agents
+                input = encoded_state + comm_input
+                input = input.view(batch_size * self.n_agents, self.hid_size)
+                hidden_state, _ = self.LSTM_module(input, (prev_hidden_state, prev_cell_state))
+
+            else: 
+                hidden_state = sum([encoded_state, self.C_modules[i](prev_hidden_state), comm_input])
+                hidden_state = self.tanh(hidden_state)
+
+        hidden_state = hidden_state.view(batch_size, self.n_agents, self.hid_size)
+
+        action_probs: Tensor = F.softmax(self.actor(hidden_state), dim=-1)
+
+        return action_probs
+    
+
     def _comm_pass(self, comm_pass: int, prev_hidden_state: Tensor) -> Tensor: 
         """
-        Passes the hidden state through the comm network
+        Passes the hidden state through the comm network # TODO finish this docstring
 
         Inputs:
             - prev_hidden_state: Tensor (B x N x hid_size)
@@ -153,7 +194,7 @@ class CommNet(nn.Module):
 
     def _get_agent_mask(self, batch_size: int, info: dict) -> Tuple[int, Tensor]:
         '''
-        Get the mask for the alive agents.
+        Get the mask for the alive agents. #TODO finish this docstring
 
         Arguments:
          - batch_size: int: The size of the batch
@@ -198,5 +239,6 @@ class CommNet(nn.Module):
 
     def init_weights(self, m: nn.Linear) -> None:
         ''' Initialize the weights of a nn.Linear layer '''
+        # TODO: this function is never called, check original code
         m.weight.data.normal_(0, self.init_std)            
         
