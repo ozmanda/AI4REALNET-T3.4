@@ -2,7 +2,7 @@
 
 import numpy as np
 from flatland.envs.observations import TreeObsForRailEnv
-from utils.utils import max_lowerthan, min_greaterthan
+from src.utils.utils import max_lowerthan, min_greaterthan
 import numpy as np
 import torch
 from torch import Tensor
