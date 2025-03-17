@@ -18,11 +18,13 @@ class MLP(nn.Module):
         self.n_agents = args.n_agents
         self.args = args
         self.n_features = num_inputs
-        self.fc1 = nn.Linear(self.n_features, args.hid_size)
-        self.fc2 = nn.Linear(args.hid_size, args.hid_size)
-        self.actor = nn.Linear(args.hid_size, args.n_actions)
-        self.actor_target = nn.Linear(args.hid_size, args.n_actions)
-        self.critic = nn.Linear(args.hid_size, 1)
+        self.hid_size = args.hid_size
+        self.n_actions = args.n_actions
+        self.fc1 = nn.Linear(self.n_features, self.hid_size)
+        self.fc2 = nn.Linear(self.hid_size, self.hid_size)
+        self.actor = nn.Linear(self.hid_size, self.n_actions)
+        self.actor_target = nn.Linear(self.hid_size, self.n_actions)
+        self.critic = nn.Linear(self.hid_size, 1)
         self.tanh = nn.Tanh()
 
 

@@ -12,9 +12,11 @@ from argparse import Namespace
 class RNN(MLP):
     def __init__(self, args: Namespace, num_inputs: int) -> None:
         super().__init__(args, num_inputs)
+        self.n_features: int = num_inputs
         self.n_agents: int = self.args.n_agents
         self.hid_size: int = self.args.hid_size
         self.multiagent: bool = False
+        self.n_actions = self.args.n_actions
 
 
     def forward(self, observations: Tensor, prev_hidden_state: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
@@ -65,10 +67,12 @@ class RNN(MLP):
 class LSTM(RNN):
     def __init__(self, args: Namespace, num_inputs: int) -> None:
         super().__init__(args, num_inputs)
+        self.n_features: int = num_inputs
         self.n_agents: int = args.n_agents
         self.hid_size: int = args.hid_size
         del self.fc2
         self.lstm_unit = nn.LSTMCell(self.hid_size, self.hid_size)
+        self.n_actions = self.args.n_actions
 
 
     def forward(self, observations: Tensor, prev_hidden_state: Tensor, prev_cell_state: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:

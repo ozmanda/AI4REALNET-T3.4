@@ -75,7 +75,7 @@ class NetworkTest(unittest.TestCase):
         Both CommNet types (recurrent and non-recurrent) can be tested as LSTM networks, as they both take hidden and cell state inputs.
         """
         # CommNet Variant 1: No Recurrent, No Shared Weights, Random Weight Initialisation
-        args = Namespace(hid_size=128, n_actions=5, batchsize = 10, n_agents = 8, num_inputs = 16, comm_passes = 1, recurrent=False, share_weights = False, comm_init = 'rand')
+        args = Namespace(hid_size=128, n_actions=5, batchsize = 10, n_agents = 8, num_inputs = 16, comm_passes = 1, recurrent=False, share_weights = False, comm_init = 'rand', hard_attention = True)
         network = CommNet(args, args.num_inputs)
         self.network_test(network, args.batchsize)
 
@@ -89,10 +89,12 @@ class NetworkTest(unittest.TestCase):
 
 
     def network_test(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int):
-        self.init_test(network, batchsize)
-        self.error_handling_test(network, batchsize)
         self.forward_pass_test(network, batchsize)
-        self.forward_target_test(network, batchsize)
+        self.error_handling_test(network, batchsize)
+
+        if isinstance(network, RNN) or isinstance(network, LSTM) or isinstance(network, CommNet):
+            self.init_test(network, batchsize)
+            self.forward_target_test(network, batchsize)
         
         if isinstance(network, CommNet):
             self.agent_mask_test(network, batchsize)
@@ -100,10 +102,11 @@ class NetworkTest(unittest.TestCase):
     
     def init_test(self, network: Union[CommNet, LSTM, RNN], batchsize: int):
         output = network.init_hidden(batchsize)
-        self.assertEqual(output[0].size(), (batchsize * network.n_agents, network.hid_size))
-        if isinstance(network, LSTM) or isinstance(network, RNN):
+        if isinstance(network, RNN): 
+            self.assertEqual(output.size(), (batchsize * network.n_agents, network.hid_size))
+        if isinstance(network, LSTM) or isinstance(network, CommNet):
+            self.assertEqual(output[0].size(), (batchsize * network.n_agents, network.hid_size))
             self.assertEqual(output[1].size(), output[0].size())
-        self.assertEqual(output[1].size(), output[0].size())
 
 
     def agent_mask_test(self, network: CommNet, batchsize): 
@@ -158,8 +161,8 @@ class NetworkTest(unittest.TestCase):
 
         else: 
             actions, value = network(correct_state)
-            self.assertEqual(actions.size(), (batchsize, network.n_actions))
-            self.assertEqual(value.size(), (batchsize, 1))
+            self.assertEqual(actions.size(), (batchsize, network.n_agents, network.n_actions))
+            self.assertEqual(value.size(), (batchsize, network.n_agents, 1))
 
 
     def forward_target_test(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int): 
@@ -173,9 +176,6 @@ class NetworkTest(unittest.TestCase):
         elif isinstance(network, RNN):
             actions = network.forward_target_network(correct_state, hidden_state)
             self.assertEqual(actions.size(), (batchsize, network.n_agents, network.n_actions))
-        
-        else:  
-            raise ValueError('MLP does not have a target network') # TODO: evaluate if MLP needs target network
 
 
 if __name__== '__main__':
