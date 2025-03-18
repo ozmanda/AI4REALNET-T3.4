@@ -5,12 +5,14 @@ https://github.com/IC3Net/IC3Net/tree/master
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
+import numpy as np
 from torch import Tensor
 from argparse import Namespace
 from typing import Tuple, List
+from src.networks.MLP import MLP
 
-class CommNet(nn.Module):
-    '''
+class CommNet(MLP):
+    ''' # TODO: implement input and output adjustment functions from MLP everywhere
     MLP-based communication netowrk that uses a communication vector to communicate information between agents.
     '''
     def __init__(self, args: Namespace, obs_shape: int):
@@ -21,9 +23,10 @@ class CommNet(nn.Module):
          - args: Namespace: The arguments passed to the model
          - obs_shape: int: The shape of the environment observation for agents
         '''
-        super().__init__()
+        super().__init__(args, obs_shape)
 
         self.args = args
+        self.n_features: int = obs_shape
         self.n_agents: int = args.n_agents
         self.n_actions: int = args.n_actions
         self.hid_size: int = args.hid_size
@@ -38,19 +41,19 @@ class CommNet(nn.Module):
         self.comm_mask = torch.ones(self.n_agents, self.n_agents) - torch.eye(self.n_agents)
 
         # Layers
-        self.encoder = nn.Linear(obs_shape, self.hid_size)
-        self.actor = nn.Linear(self.hid_size, self.n_actions)
+        self.encoder = nn.Linear(self.n_features, self.hid_size)
+        self.actor = nn.Linear(self.hid_size, self.n_actions, dtype=torch.float64)
         if self.recurrent:
-            self.LSTM_module = nn.LSTMCell(self.hid_size, self.hid_size) 
+            self.LSTM_module = nn.LSTMCell(self.hid_size, self.hid_size, dtype=torch.float64) 
         self.tanh = nn.Tanh()
-        self.critic = nn.Linear(self.hid_size, 1)
+        self.critic = nn.Linear(self.hid_size, 1, dtype=torch.float64)
 
         # if weights are shared the linear layer is shared, otherwise one is instatiated for each pass
         if self.share_weights:
-            self.C_module = nn.Linear(self.hid_size, self.hid_size)
+            self.C_module = nn.Linear(self.hid_size, self.hid_size, dtype=torch.float64)
             self.C_modules = [self.C_module for _ in range(self.comm_passes)]
         else:
-            self.C_modules = [nn.Linear(self.hid_size, self.hid_size) for _ in range(self.comm_passes)]
+            self.C_modules = [nn.Linear(self.hid_size, self.hid_size, dtype=torch.float64) for _ in range(self.comm_passes)]
 
         # Communication module weight initialisations
         if args.comm_init == 'zeros':
@@ -75,6 +78,9 @@ class CommNet(nn.Module):
              - action_data: data needed to take next action #! data type?
              - value_head: Tensor #! (?)        
         '''
+        # TODO: define tensor dimensions for this function
+        prev_hidden_state = prev_hidden_state.to(torch.float64).view(-1, self.hid_size)
+        prev_cell_state = prev_cell_state.to(torch.float64).view(-1, self.hid_size)
         batch_size: int = state.size(0)
         encoded_state = self.forward_state_encoder(state)
 
@@ -82,29 +88,34 @@ class CommNet(nn.Module):
         self.agent_mask = agent_mask 
         self.n_agent_alive = num_agents_alive
         
-
         for i in range(self.comm_passes):
-            comm_input: Tensor = self._comm_pass() #!
+            comm_input: Tensor = self._comm_pass(i, prev_hidden_state) 
 
             if self.args.recurrent:
                 # skip connection: input is the combination of comm matrix and encoded state for all agents
                 input = encoded_state + comm_input
                 input = input.view(batch_size * self.n_agents, self.hid_size)
                 hidden_state, cell_state = self.LSTM_module(input, (prev_hidden_state, prev_cell_state))
+                prev_cell_state = cell_state
 
             else: 
-                hidden_state = sum([encoded_state, self.C_modules[i](prev_hidden_state), comm_input])
+                hidden_state: Tensor = sum([encoded_state, 
+                                    self.C_modules[i](prev_hidden_state), 
+                                    comm_input])
                 hidden_state = self.tanh(hidden_state)
 
-        value_head = self.critic(hidden_state)
+            prev_hidden_state = hidden_state
+
+        value = self.adjust_output_dimensions(self.critic(hidden_state)) #! cleanup
         hidden_state = hidden_state.view(batch_size, self.n_agents, self.hid_size)
 
         action_probs: Tensor = F.softmax(self.actor(hidden_state), dim=-1)
+        action_probs = self.adjust_output_dimensions(action_probs) #! cleanup
 
-        if self.args.recurrent:
-            return action_probs, value_head, (hidden_state.clone(), cell_state.clone())
+        if self.args.recurrent: #! cleanup
+            return action_probs, value, self.adjust_output_dimensions(hidden_state.clone(), cell_state.clone())
         else:
-            return action_probs, value_head, (None, None)
+            return action_probs, value, (None, None)
 
 
     def forward_state_encoder(self, state: Tensor) -> Tensor:
@@ -117,6 +128,7 @@ class CommNet(nn.Module):
         Returns:
          - encoded state: torch.Tensor: The encoded state (B x N x hid_size)
         '''
+        state = state.view(-1, self.n_features)
         encoded_state: Tensor = self.encoder(state)
         encoded_state = self.tanh(encoded_state)
 
@@ -143,22 +155,23 @@ class CommNet(nn.Module):
         self.agent_mask = agent_mask 
         self.n_agent_alive = num_agents_alive
         
-
         for i in range(self.comm_passes):
-            comm_input: Tensor = self._comm_pass() #!
+            comm_input: Tensor = self._comm_pass(i, prev_hidden_state) #!
 
             if self.args.recurrent:
                 # skip connection: input is the combination of comm matrix and encoded state for all agents
                 input = encoded_state + comm_input
                 input = input.view(batch_size * self.n_agents, self.hid_size)
-                hidden_state, _ = self.LSTM_module(input, (prev_hidden_state, prev_cell_state))
+                hidden_state, cell_state = self.LSTM_module(input, (prev_hidden_state, prev_cell_state))
+                prev_cell_state = cell_state
 
             else: 
                 hidden_state = sum([encoded_state, self.C_modules[i](prev_hidden_state), comm_input])
                 hidden_state = self.tanh(hidden_state)
 
-        hidden_state = hidden_state.view(batch_size, self.n_agents, self.hid_size)
+            prev_hidden_state = hidden_state
 
+        hidden_state = hidden_state.view(batch_size, self.n_agents, self.hid_size)
         action_probs: Tensor = F.softmax(self.actor(hidden_state), dim=-1)
 
         return action_probs
@@ -171,6 +184,8 @@ class CommNet(nn.Module):
         Inputs:
             - prev_hidden_state: Tensor (B x N x hid_size)
         """
+        # TODO: cleanup tensor size handling for comm passes 
+        prev_hidden_state = prev_hidden_state.view(-1, self.n_agents, self.hid_size) 
         comm = prev_hidden_state.unsqueeze(-2).expand(-1, self.n_agents, self.n_agents, self.hid_size) # (B x N x 1 x hid_size) -> (B x N x N x hid_size)
 
         mask = self.comm_mask.view(1, self.n_agents, self.n_agents)
@@ -189,12 +204,13 @@ class CommNet(nn.Module):
         # Combine all of C_j for an ith agent
         comm_sum = comm.sum(dim=1) # (B x N x hid_size)
         c = self.C_modules[comm_pass](comm_sum) 
+        c = c.view(-1, self.hid_size)
         return c
     
 
     def _get_agent_mask(self, batch_size: int, info: dict) -> Tuple[int, Tensor]:
         '''
-        Get the mask for the alive agents. #TODO finish this docstring
+        Get the mask for the alive agents. # TODO: finish this docstring
 
         Arguments:
          - batch_size: int: The size of the batch
@@ -202,20 +218,20 @@ class CommNet(nn.Module):
 
         '''
         if 'alive_mask' in info:
-            agent_mask: Tensor = torch.from_numpy(info['alive_mask'])
+            agent_mask: Tensor = torch.from_numpy(info['alive_mask']) if isinstance(info['alive_mask'], np.ndarray) else info['alive_mask'] # TODO: clean this up
             num_agents_alive: int = agent_mask.sum()
         else: 
             agent_mask: Tensor = torch.ones(self.n_agents)
             num_agents_alive: int = self.n_agents
 
-        agent_mask = agent_mask.view(1, 1, self.n_agents)
+        agent_mask = agent_mask.view(batch_size, 1, self.n_agents)
         agent_mask = agent_mask.expand(batch_size, self.n_agents, self.n_agents).unsqueeze(-1)
 
         # Hard Attention -> action whether an agent communications or not #! ????
         if self.args.hard_attention:
-            comm_action: Tensor = torch.tensor(info['comm_action'])
+            comm_action: Tensor = torch.tensor(info['comm_action']) if isinstance(info['comm_action'], np.ndarray) else info['comm_action']
             comm_action_mask: Tensor = comm_action.expand(batch_size, self.n_agents, self.n_agents).unsqueeze(-1) # (B x N x N x 1)
-            agent_mask *= comm_action_mask.double()
+            agent_mask = comm_action_mask.double() * agent_mask.clone()
 
         agent_mask_transpose = agent_mask.transpose(1, 2) # (B x N x N x 1) -> mirrors around the diagonal
         agent_mask = agent_mask * agent_mask_transpose    # TODO: check that this change is correct     
