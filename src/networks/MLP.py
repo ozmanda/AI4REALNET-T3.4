@@ -40,7 +40,9 @@ class MLP(nn.Module):
         
 
     def adjust_input_dimensions(self, input: Union[Tensor, Tuple[Tensor, ...]]) -> Union[Tensor, Tuple]: 
-        """Check the dimensions of the input tensor and adjust for the multi-agent case. This function assumes dimensions of shape (batch_size, n_agents, n_features) or (batch_size, n_features)."""
+        """
+        Check the dimensions of the input tensor and adjust for the multi-agent case. This function assumes dimensions of shape (batch_size, n_agents, n_features) or (batch_size, n_features).
+        """
 
         if isinstance(input, tuple):
             if input[0].dim() == 3:
