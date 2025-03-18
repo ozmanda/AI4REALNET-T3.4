@@ -8,7 +8,7 @@ from argparse import Namespace
 from torch import optim, Tensor
 from typing import Tuple, List, Union, Dict, Any
 
-from training.Trainer import Transition
+from src.training.Trainer import Transition
 from src.networks.RNN import RNN, LSTM
 from flatland.envs.rail_env import RailEnv
 
