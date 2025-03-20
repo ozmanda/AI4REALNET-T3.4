@@ -3,6 +3,7 @@ sys.path.append('../src')
 import unittest
 from argparse import Namespace
 import torch
+import numpy as np
 from typing import Union
 from src.networks.MLP import MLP
 from src.networks.RNN import RNN, LSTM
@@ -89,6 +90,7 @@ class NetworkTest(unittest.TestCase):
 
 
     def network_test(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int):
+        
         self.forward_pass_test(network, batchsize)
         self.error_handling_test(network, batchsize)
 
@@ -112,12 +114,12 @@ class NetworkTest(unittest.TestCase):
     def agent_mask_test(self, network: CommNet, batchsize): 
         info = {'comm_action': torch.randn(batchsize, network.n_agents, network.n_agents), 'alive_mask': torch.zeros(batchsize, network.n_agents)}
         num_agents_alive, agent_mask = network._get_agent_mask(batchsize, info)
-        self.assertEqual(num_agents_alive, 0)
+        self.assertTrue(torch.equal(num_agents_alive, torch.zeros(batchsize)))
         self.assertEqual(agent_mask.size(), (batchsize, network.n_agents, network.n_agents))
 
         info = {'comm_action': torch.randn(batchsize, network.n_agents, network.n_agents), 'alive_mask': torch.ones(batchsize, network.n_agents)}
         num_agents_alive, agent_mask = network._get_agent_mask(batchsize, info)
-        self.assertEqual(num_agents_alive, network.n_agents)
+        self.assertTrue(torch.equal(num_agents_alive, torch.full(batchsize, network.n_agents)))
 
 
     def error_handling_test(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int): 
@@ -142,35 +144,43 @@ class NetworkTest(unittest.TestCase):
 
 
     def forward_pass_test(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int):
-        # TODO: check if the forward pass test is correct
         correct_state = torch.randn(batchsize, network.n_agents, network.n_features)
         hidden_state = torch.randn(batchsize, network.n_agents, network.hid_size)
 
-        if isinstance(network, LSTM) or isinstance(network, CommNet): 
+        if isinstance(network, LSTM): 
             actions, value, next_hidden_state, next_cell_state = network(correct_state, hidden_state, hidden_state.clone())
-            self.assertEqual(actions.size(), (batchsize, network.n_agents, network.n_actions))
-            self.assertEqual(value.size(), (batchsize, network.n_agents, 1))
             self.assertEqual(next_hidden_state.size(), (batchsize, network.n_agents, network.hid_size))
             self.assertEqual(next_cell_state.size(), next_hidden_state.size())
+            
+        if isinstance(network, CommNet): 
+            info = {'comm_action': torch.randn(batchsize, network.n_agents, network.n_agents), 'alive_mask': torch.zeros(batchsize, network.n_agents)}
+            actions, value, next_hidden_state, next_cell_state = network(correct_state, hidden_state, hidden_state.clone(), info)
+            if network.recurrent: 
+                self.assertEqual(next_hidden_state.size(), (batchsize, network.n_agents, network.hid_size))
+                self.assertEqual(next_cell_state.size(), next_hidden_state.size())
 
         elif isinstance(network, RNN):
             actions, value, next_hidden_state = network(correct_state, hidden_state)
-            self.assertEqual(actions.size(), (batchsize, network.n_agents, network.n_actions))
-            self.assertEqual(value.size(), (batchsize, network.n_agents, 1))
             self.assertEqual(next_hidden_state.size(), (batchsize, network.n_agents, network.hid_size))
 
         else: 
             actions, value = network(correct_state)
-            self.assertEqual(actions.size(), (batchsize, network.n_agents, network.n_actions))
-            self.assertEqual(value.size(), (batchsize, network.n_agents, 1))
+        
+        self.assertEqual(actions.size(), (batchsize, network.n_agents, network.n_actions))
+        self.assertEqual(value.size(), (batchsize, network.n_agents, 1))
 
 
     def forward_target_test(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int): 
         correct_state = torch.randn(batchsize, network.n_agents, network.n_features)
         hidden_state = torch.randn(batchsize, network.n_agents, network.hid_size)
 
-        if isinstance(network, LSTM) or isinstance(network, CommNet): 
+        if isinstance(network, LSTM): 
             actions = network.forward_target_network(correct_state, hidden_state, hidden_state.clone())
+            self.assertEqual(actions.size(), (batchsize, network.n_agents, network.n_actions))
+
+        elif isinstance(network, CommNet):
+            info = {'comm_action': torch.rand(batchsize, network.n_agents, network.n_agents), 'alive_mask': torch.zeros(batchsize, network.n_agents)}
+            actions = network.forward_target_network(correct_state, hidden_state, hidden_state.clone(), info=info)
             self.assertEqual(actions.size(), (batchsize, network.n_agents, network.n_actions))
 
         elif isinstance(network, RNN):
