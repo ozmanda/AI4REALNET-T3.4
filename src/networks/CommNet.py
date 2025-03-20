@@ -63,25 +63,29 @@ class CommNet(MLP):
 
     def forward(self, state: Tensor, prev_hidden_state: Tensor = None, prev_cell_state: Tensor = None, info={}) -> Tuple[List[Tensor], Tensor, Tuple[Tensor, Tensor]]:
         '''
-        Forward function for the CommNet class #TODO: redo this docstring
+        Forward function for the CommNet class 
 
         Arguments:
-         - state: tuple: The state of the agents
-         - prev_hidden_state: Tensor: previous hidden state and in the case of LSTM the cell state
-         - prev_cell_state: Tensor: previous cell state in the case of LSTM
-         - info: dict: Additional information to pass through the
+         - state                tuple       The state of the agents
+         - prev_hidden_state    Tensor      Previous hidden state and in the case of LSTM the cell state
+         - prev_cell_state      Tensor      previous cell state in the case of LSTM
+         - info                 dict        Additional information, e.g., comm_action and comm_
 
         Returns:
-         - tuple: (next_hidden_state, comm_out, action_data, value_head)
-             - next_hidden_state: Tensor
-             - comm_out: Tensor
-             - action_data: data needed to take next action #! data type?
-             - value_head: Tensor #! (?)        
+         - tuple:
+             - comm_out                 (batchsize, n_agents, #?)
+             - action_log_probs         (batchsize, n_agents, n_actions)
+             - value                    (batchsize, n_agents, 1)   
+             - hidden state tuple
+                - next_hidden_state     (batchsize, n_agents, hid_size)  
+                - next_cell_state       (batchsize, n_agents, hid_size)      
         '''
         # TODO: define tensor dimensions for this function
-        prev_hidden_state = prev_hidden_state.to(torch.float64).view(-1, self.hid_size)
-        prev_cell_state = prev_cell_state.to(torch.float64).view(-1, self.hid_size)
         batch_size: int = state.size(0)
+        state, prev_hidden_state, prev_cell_state = self.adjust_input_dimensions((state, prev_hidden_state, prev_cell_state))
+
+        prev_hidden_state = prev_hidden_state.to(torch.float64)
+        prev_cell_state = prev_cell_state.to(torch.float64)
         encoded_state = self.forward_state_encoder(state)
 
         num_agents_alive, agent_mask = self._get_agent_mask(batch_size, info)
@@ -94,7 +98,6 @@ class CommNet(MLP):
             if self.args.recurrent:
                 # skip connection: input is the combination of comm matrix and encoded state for all agents
                 input = encoded_state + comm_input
-                input = input.view(batch_size * self.n_agents, self.hid_size)
                 hidden_state, cell_state = self.LSTM_module(input, (prev_hidden_state, prev_cell_state))
                 prev_cell_state = cell_state
 
@@ -106,16 +109,14 @@ class CommNet(MLP):
 
             prev_hidden_state = hidden_state
 
-        value = self.adjust_output_dimensions(self.critic(hidden_state)) #! cleanup
+        value: Tensor = self.critic(hidden_state).view(-1, self.n_agents, 1)
+        action_log_probs: Tensor = F.softmax(self.actor(hidden_state), dim=-1).view(-1, self.n_agents, self.n_actions)
         hidden_state = hidden_state.view(batch_size, self.n_agents, self.hid_size)
 
-        action_probs: Tensor = F.softmax(self.actor(hidden_state), dim=-1)
-        action_probs = self.adjust_output_dimensions(action_probs) #! cleanup
-
-        if self.args.recurrent: #! cleanup
-            return action_probs, value, self.adjust_output_dimensions(hidden_state.clone(), cell_state.clone())
+        if self.recurrent: #! cleanup
+            return action_log_probs, value, hidden_state.clone(), cell_state.view(batch_size, self.n_agents, self.hid_size).clone()
         else:
-            return action_probs, value, (None, None)
+            return action_log_probs, value, None, None
 
 
     def forward_state_encoder(self, state: Tensor) -> Tensor:
@@ -149,12 +150,15 @@ class CommNet(MLP):
          - action_probs: Tensor: The action probabilities for the agents
         """
         batch_size: int = state.size(0)
-        encoded_state = self.forward_state_encoder(state)
+        state = state.view(-1, self.n_features)
+        prev_hidden_state = prev_hidden_state.view(-1, self.hid_size).to(torch.float64)
+        prev_cell_state = prev_cell_state.view(-1, self.hid_size).to(torch.float64)
 
+        encoded_state = self.forward_state_encoder(state)
         num_agents_alive, agent_mask = self._get_agent_mask(batch_size, info)
         self.agent_mask = agent_mask 
         self.n_agent_alive = num_agents_alive
-        
+
         for i in range(self.comm_passes):
             comm_input: Tensor = self._comm_pass(i, prev_hidden_state) #!
 
@@ -174,7 +178,7 @@ class CommNet(MLP):
         hidden_state = hidden_state.view(batch_size, self.n_agents, self.hid_size)
         action_probs: Tensor = F.softmax(self.actor(hidden_state), dim=-1)
 
-        return action_probs
+        return action_probs.view(batch_size, self.n_agents, self.n_actions)
     
 
     def _comm_pass(self, comm_pass: int, prev_hidden_state: Tensor) -> Tensor: 
@@ -182,7 +186,8 @@ class CommNet(MLP):
         Passes the hidden state through the comm network # TODO finish this docstring
 
         Inputs:
-            - prev_hidden_state: Tensor (B x N x hid_size)
+            - comm_pass             int 
+            - prev_hidden_state     Tensor      (batchsize * n_agents, hid_size)
         """
         # TODO: cleanup tensor size handling for comm passes 
         prev_hidden_state = prev_hidden_state.view(-1, self.n_agents, self.hid_size) 
@@ -219,9 +224,9 @@ class CommNet(MLP):
         '''
         if 'alive_mask' in info:
             agent_mask: Tensor = torch.from_numpy(info['alive_mask']) if isinstance(info['alive_mask'], np.ndarray) else info['alive_mask'] # TODO: clean this up
-            num_agents_alive: int = agent_mask.sum()
+            num_agents_alive: int = agent_mask.sum(dim=1)
         else: 
-            agent_mask: Tensor = torch.ones(self.n_agents)
+            agent_mask: Tensor = torch.ones(batch_size, self.n_agents)
             num_agents_alive: int = self.n_agents
 
         agent_mask = agent_mask.view(batch_size, 1, self.n_agents)
