@@ -17,7 +17,9 @@
                 "--batch_size", "200",
                 "--target_update_freq", "5",
                 "--model_name", "test",
-                "--save_every", "2"
+                "--save_every", "2",
+                "--comm", "True",
+                "--comm_passes", "3"
             ]
         }
     ]

@@ -202,6 +202,7 @@ class RNNTrainer():
             - value_loss
             - entropy
         """
+        # TODO: this is programmed for LSTM, consider RNN with no cell_state
         gradient_info: Dict = {}
         batch_size = len(batch.state)
 
@@ -215,7 +216,8 @@ class RNNTrainer():
         dones = dict_tuple_to_tensor(batch.done)
         dones = dones[:-1, :] # remove the '__all__' entry at the end of the done dict
         # dones = torch.stack(batch.done)
-        hidden_states = (torch.stack(batch.hidden_states), torch.stack(batch.cell_states))
+        hidden_states = torch.stack(batch.hidden_states)
+        cell_states = torch.stack(batch.cell_states)
 
         returns: Tensor = torch.zeros(batch_size, self.n_agents)
         advantages: Tensor = torch.zeros(batch_size, self.n_agents)
@@ -232,7 +234,7 @@ class RNNTrainer():
         CLIP_loss: Tensor = torch.zeros(batch_size, self.n_agents)
 
         # probability ratio # TODO: where to get prev_hidden_state and _cell from?
-        target_log_probs = self.policy_net.forward_target_network(observations, hidden_states)
+        target_log_probs = self.policy_net.forward_target_network(observations, hidden_states, cell_states)
         target_log_probs = target_log_probs.view(-1, self.n_agents, self.n_actions)
         ratio: Tensor = torch.exp(action_log_probs - target_log_probs) 
         clipped_ratio: Tensor = torch.clamp(ratio, 1 - self.args.epsilon, 1 + self.args.epsilon)
