@@ -1,6 +1,9 @@
 # AI4REALNET-T3.4
 Repository for experimental development of fully autonomous AI for the AI4REALNET project. The work focuses on the development of solutions for multi-agent systems, using the flatland simulation environment. 
 
+## Installation
+These packages were developed with python 3.8.10. For package versions see the ``requirements.txt``. In the .vscode folder, a ``launch.json`` and ``settings.json`` are available to run the different models and perform unittesting.
+
 ## Communication Baselines
 Currently the repository contains the following baseline models upon which further development should be done: 
 
