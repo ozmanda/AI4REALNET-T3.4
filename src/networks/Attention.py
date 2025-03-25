@@ -12,16 +12,16 @@ class MultiHeadAttention(nn.Module):
     MultiHeadAttention class as described in the original paper "Attention is All You Need" by Vaswani et al: 
     https://arxiv.org/abs/1706.03762
     """
-    def __init__(self, num_features: int, num_heads: int) -> None:
+    def __init__(self, n_features: int, num_heads: int) -> None:
         super().__init__()
         self.n_heads: int = num_heads
         #? what does this scale metric do?
-        self.scale = 1.0 / num_features ** 0.5
+        self.scale = 1.0 / n_features ** 0.5
 
         #? define what these layers are exactly and how they interact
-        self.fc_key = nn.Linear(num_features, num_features * self.n_heads, bias=False)
-        self.fc_query = nn.Linear(num_features, num_features * self.n_heads, bias=False)
-        self.fc_value = nn.Linear(num_features, num_features * self.n_heads, bias=False)
+        self.fc_key = nn.Linear(n_features, n_features * self.n_heads, bias=False)
+        self.fc_query = nn.Linear(n_features, n_features * self.n_heads, bias=False)
+        self.fc_value = nn.Linear(n_features, n_features * self.n_heads, bias=False)
 
     #? do we want to keep or rename query and key
     def forward(self, key: Tensor, query: Tensor, value: Tensor) -> Tensor:
