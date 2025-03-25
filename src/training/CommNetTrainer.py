@@ -8,7 +8,7 @@ from src.training.Trainer import Transition
 from typing import List, Tuple, Dict, Any
 from src.utils.utils import merge_dicts, dict_tuple_to_tensor
 from src.utils.action_utils import sample_action, action_tensor_to_dict
-from src.utils.obs import obs_dict_to_tensor
+from src.utils.obs_utils import obs_dict_to_tensor
 from src.utils.reward_utils import compute_discounted_reward_per_agent
 from src.training.RNNTrainer import RNNTrainer
 
