@@ -6,7 +6,8 @@ from src.utils.utils import max_lowerthan, min_greaterthan
 import numpy as np
 import torch
 from torch import Tensor
-from typing import Tuple, Union, Dict
+from torch import Tensor
+from typing import Tuple, Union, Dict, List
 from flatland.envs.observations import Node
 
 def _split_node_into_feature_groups(node: Node) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -219,4 +220,35 @@ def split_features(node: Node) -> np.ndarray:
     return features
 
 
-    
+def direction_tensor(neighbour_depth) -> List[Tensor]:
+    """
+    Adapted from the JBR_HSE Solution to the Flatland 2020 Challenge: https://github.com/jbr-ai-labs/NeurIPS2020-Flatland-Competition-Solution/tree/master
+    Determines a direction tensor for the binary tree, excluding the root.
+
+    Each depth begins at left_child_index and ends at right_child_index, for example depth 1 = [0, 1], depth 2 = [2, 5], depth 3 = [6, 13]
+    """
+    direction_tensor: Tensor = torch.zeros((2 ** (neighbour_depth + 1) - 2, neighbour_depth), dtype = torch.float64)
+    for depth in range(1, neighbour_depth + 1):
+        left_parent_index: int = 2 ** (depth - 1) -2
+        right_parent_index: int = 2 ** depth - 2
+        
+        left_child_index: int = 2 ** depth - 2
+        right_child_index: int = 2 ** (depth + 1) - 2
+
+        if depth > 1:
+            direction_tensor[left_child_index : right_child_index : 2] = direction_tensor[left_parent_index : right_parent_index]
+            direction_tensor[left_child_index+1 : right_child_index : 2] = direction_tensor[left_parent_index : right_parent_index]
+        
+        direction_tensor[left_child_index : right_child_index : 2, depth-1] = -1
+        direction_tensor[left_child_index+1 : right_child_index : 2, depth-1] = 1
+
+    return direction_tensor
+
+
+
+def get_depth(size):
+    for i in range(10):
+        if 2 ** i == size + 2:
+            return i
+    raise ValueError('Depth outside of range')
+        
