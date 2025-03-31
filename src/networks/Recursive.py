@@ -32,10 +32,11 @@ class RecursiveLayer(nn.Module):
 
     def forward(self, state: Tensor, general_size: int): 
         """
-        Forward pass 
+        Forward pass. Assumes that the input state is a tensor of shape (batch_size, n_features + general_size), where the "general features" begin at position 0 and end at position general_size - 1. The remaining features are the "state features".
 
         Parameters: 
-            - state     Tensor      (batch_size, n_features + general_size)
+            - state         Tensor      (batch_size, n_features + general_size)
+            - general_size  int         Number of general features
         """
         batch_size = state.size(0)
         
