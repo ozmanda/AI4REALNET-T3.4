@@ -8,7 +8,7 @@ from src.training.Trainer import Transition
 from typing import List, Tuple, Dict, Any
 from src.utils.utils import merge_dicts, dict_tuple_to_tensor
 from src.utils.action_utils import sample_action, action_tensor_to_dict
-from src.utils.obs_utils import obs_dict_to_tensor
+from src.utils.obs_utils import obs_dict_to_tensor, _calculate_tree_nodes
 from src.utils.reward_utils import compute_discounted_reward_per_agent
 from src.training.RNNTrainer import RNNTrainer
 
@@ -22,7 +22,7 @@ class CommNetTrainer(RNNTrainer):
         self.recurrent = args.recurrent
         if self.observation_type == 'tree':
             self.max_tree_depth: int = args.max_tree_depth
-            self.tree_nodes = int((4 ** (self.max_tree_depth + 1) - 1) / 3) #* geometric progression
+            self.tree_nodes = _calculate_tree_nodes(self.max_tree_depth)
             self.obs_features: int = 12
 
         self.stats: dict = dict()
