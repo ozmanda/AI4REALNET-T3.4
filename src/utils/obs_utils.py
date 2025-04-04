@@ -10,6 +10,9 @@ from torch import Tensor
 from typing import Tuple, Union, Dict, List
 from flatland.envs.observations import Node
 
+def _calculate_tree_nodes(max_depth: int) -> int:   
+    return int((4 ** (max_depth + 1) - 1) / 3) #* geometric progression
+
 def _split_node_into_feature_groups(node: Node) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     '''
     Splits the features of a single node into three arrays: 
@@ -163,6 +166,12 @@ def tree_observation_tensor(observation: dict, max_depth: int, n_nodes: int) -> 
     return torch.Tensor(agents_obs)
 
 
+def tree_observation_dict(observation: dict, max_depth: int, n_nodes: int) -> Dict[int, Tensor]:
+    agent_obs: Dict[int, Tensor] = {}
+    for agent in observation.keys():
+        agent_obs[agent] = split_tree(observation[agent], max_depth)
+        
+
 def split_tree(tree: Node, max_depth: int):
     ''' Splits the tree observation into an ndarray of features, initial splitting function '''
     features = split_features(tree)
@@ -223,10 +232,11 @@ def split_features(node: Node) -> np.ndarray:
 def direction_tensor(neighbour_depth) -> List[Tensor]:
     """
     Adapted from the JBR_HSE Solution to the Flatland 2020 Challenge: https://github.com/jbr-ai-labs/NeurIPS2020-Flatland-Competition-Solution/tree/master
-    Determines a direction tensor for the binary tree, excluding the root.
+    Adjusted to consider a ternary tree, which is the form of the flatland tree observation (left, straight, right)
 
-    Each depth begins at left_child_index and ends at right_child_index, for example depth 1 = [0, 1], depth 2 = [2, 5], depth 3 = [6, 13]
+    Each depth begins at left_child_index and ends at right_child_index, for example depth 1 = [0, 2], depth 2 = [3, 11], etc.
     """
+    # TODO: discuss the encoding of a ternary tree with Manuel 
     direction_tensor: Tensor = torch.zeros((2 ** (neighbour_depth + 1) - 2, neighbour_depth), dtype = torch.float64)
     for depth in range(1, neighbour_depth + 1):
         left_parent_index: int = 2 ** (depth - 1) -2
