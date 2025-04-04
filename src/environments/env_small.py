@@ -10,7 +10,7 @@ def small_flatland_env(observation: str = 'tree', max_tree_depth: int = 2, malfu
     """
     RailEnv parameters:
         width = 35
-        height = 28
+        height = 35
         cities = 4
         trains = 8
         city_grid_distribution = False
