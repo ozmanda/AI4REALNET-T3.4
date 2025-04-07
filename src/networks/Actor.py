@@ -24,15 +24,15 @@ class Actor(nn.Module):
         self.n_features = n_features
         self.hid_size: int = args.hid_size
         self.layer_sizes: List[int] = args.layer_sizes
-        self.intention_size: int = args.intention_size
+        self.intent_size: int = args.intent_size
         self.neighbour_depth: int = args.neighbour_depth
         
         self.state_encoder = nn.Sequential(RecursiveLayer(n_features, self.hid_size))
-        self.policy_hidden_layer = nn.Linear(self.hid_size, self.intention_size + self.neighbour_depth)
-        self.intention_encoding = nn.Sequential(nn.Linear(self.hid_size, self.intention_size, bias=False),
+        self.policy_hidden_layer = nn.Linear(self.hid_size, self.intent_size + self.neighbour_depth)
+        self.intent_encoding = nn.Sequential(nn.Linear(self.hid_size, self.intent_size, bias=False),
                                                   nn.ReLU(inplace=True))
-        self.intention_attention = MultiHeadAttention(num_features=n_features, num_heads=args.n_heads)
-        self.action_decoder = nn.Sequential(nn.Linear(args.thought_size + (args.intention_size + self.neighbour_depth) * args.n_heads, 256), 
+        self.intent_attention = MultiHeadAttention(num_features=n_features, num_heads=args.n_heads)
+        self.action_decoder = nn.Sequential(nn.Linear(args.thought_size + (args.intent_size + self.neighbour_depth) * args.n_heads, 256), 
                                             nn.ReLU(inplace=True), 
                                             nn.Linear(256, self.n_actions))
 
@@ -44,7 +44,7 @@ class Actor(nn.Module):
 
 
     def intent(self, encoded_state: Tensor) -> Tensor:
-        return self.intention_encoding(encoded_state)
+        return self.intent_encoding(encoded_state)
 
 
     def act(self, encoded_state: Tensor, agent_signals: Tensor) -> Tensor:
@@ -57,7 +57,7 @@ class Actor(nn.Module):
         """
         query: Tensor = self.policy_hidden_layer(encoded_state).unsqueeze(-1)
         key: Tensor = self._add_direction(agent_signals)
-        attended_signals: Tensor = self.intention_attention(query=query, key=key, value=key)
+        attended_signals: Tensor = self.intent_attention(query=query, key=key, value=key)
         attended_signals = attended_signals.squeeze(1)
         input = torch.cat([encoded_state, attended_signals], dim=1)
         return self.action_decoder(input)
