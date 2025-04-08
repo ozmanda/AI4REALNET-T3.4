@@ -11,14 +11,13 @@ from flatland.envs.rail_env import RailEnv
 from flatland.envs.step_utils.states import TrainState
 
 class PPORunner():
-    def __init__(self, env: RailEnv, controller: PPOController, max_steps: int) -> None:
+    def __init__(self, env: RailEnv, controller: PPOController) -> None:
         self.env: RailEnv = env
         self.controller: PPOController = controller 
-        self.rollout: DefaultDict = defaultdict(PPORollout)
-        self.max_steps: int = max_steps
+        self.rollout: DefaultDict[int, PPORollout] = defaultdict(PPORollout)
 
 
-    def run(self) -> Tuple[PPORollout, Dict]:
+    def run(self, max_steps: int) -> Tuple[DefaultDict[int, PPORollout], Dict]:
         """
         Run a single episode in the environment and collect rollouts.
 
@@ -51,7 +50,7 @@ class PPORunner():
             state_tensor = next_state_tensor
             steps_done += 1
 
-            if done['__all__'] or steps_done >= self.max_steps:
+            if done['__all__'] or steps_done >= max_steps:
                 break
             
         percent_done = sum([1 for agent in self.env.agents if agent.state == TrainState.DONE]) / self.env.number_of_agents
