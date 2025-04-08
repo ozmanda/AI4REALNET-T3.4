@@ -38,3 +38,8 @@ class PPORollout():
         combined_rollout = PPORollout()
         combined_rollout.transitions = list(chain.from_iterable([rollout.transitions for rollout in rollouts]))
         return combined_rollout
+    
+
+    def is_empty(self) -> bool:
+        """ Check if the rollout is empty. """
+        return not self.transitions
