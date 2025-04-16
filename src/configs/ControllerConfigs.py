@@ -1,7 +1,7 @@
 from src.algorithms.PPO.PPOController import PPOController
 from typing import Dict, List
 
-class PPOController(): 
+class PPOControllerConfig(): 
     def __init__(self,
                  state_size: int,
                  action_size: int,
@@ -49,4 +49,4 @@ class PPOController():
                              value_loss_coefficient=self.value_loss_coefficient,
                              entropy_coefficient=self.entropy_coefficient,
                              actor_layers_sizes=self.actor_layers_sizes,
-                             critic_layers_sizes=self.critic_layers_sizes)
+                             critic_layers_sizes=self.critic_layers_sizes) #TODO: this isn't correct, move to Namespace for laoding in PPOController
