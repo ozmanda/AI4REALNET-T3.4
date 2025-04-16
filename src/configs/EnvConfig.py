@@ -72,8 +72,11 @@ class FlatlandEnvConfig():
     
 
     # UPDATE FUNCTIONS
-    def update_random_seed(self, seed: int) -> None:
-        self.random_seed = seed
+    def update_random_seed(self, seed: int = 0) -> None:
+        if seed:
+            self.random_seed = seed
+        else: 
+            self.random_seed += 1
 
     def update_observation_builder(self, observation_builder_config) -> None:
         self.observation_builder_config = observation_builder_config
