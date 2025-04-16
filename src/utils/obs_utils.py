@@ -170,7 +170,7 @@ def tree_observation_dict(observation: dict, max_depth: int, n_nodes: int) -> Di
     agent_obs: Dict[int, Tensor] = {}
     for agent in observation.keys():
         agent_obs[agent] = split_tree(observation[agent], max_depth)
-        
+    return agent_obs
 
 def split_tree(tree: Node, max_depth: int):
     ''' Splits the tree observation into an ndarray of features, initial splitting function '''
