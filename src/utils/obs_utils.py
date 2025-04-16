@@ -10,6 +10,13 @@ from torch import Tensor
 from typing import Tuple, Union, Dict, List
 from flatland.envs.observations import Node
 
+def calculate_state_size(max_depth: int) -> int:
+    '''
+    Calculates the state size of the tree observation based on the maximum depth of the tree.
+    The state size is calculated as the number of nodes in the tree multiplied by the number of features (12) per node.
+    '''
+    return _calculate_tree_nodes(max_depth) * 12
+
 def _calculate_tree_nodes(max_depth: int) -> int:   
     return int((4 ** (max_depth + 1) - 1) / 3) #* geometric progression
 
