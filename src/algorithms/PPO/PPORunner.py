@@ -29,7 +29,7 @@ class PPORunner():
             - rollout       PPORollout      The collected rollouts
             - stats         Dict            Statistics about the episode (e.g., rewards, lengths)
         """
-        state_dict_np, info_dict = self.env.reset()
+        state_dict_np, _ = self.env.reset()
         state_dict_tensor: Dict[int, Tensor] = tree_observation_dict(state_dict_np, self.env.agents) #! this isn't correct
         self.obs_tensor_size = state_dict_tensor[0].size()
 
@@ -43,7 +43,7 @@ class PPORunner():
 
         while True: 
             action_dict, log_probs = self._select_actions()
-            next_state_dict, reward, done, info = self.env.step(action_dict) # TODO: check if wrapping is necessary for reward and info
+            next_state_dict, reward, done, _ = self.env.step(action_dict) # TODO: check if wrapping is necessary for reward and info
             next_state_tensor: Dict[int, Tensor] = tree_observation_dict(next_state_dict, self.env.agents)
             self._save_transitions(state_tensor, action_dict, log_probs, next_state_tensor, reward, done, steps_done)
 
