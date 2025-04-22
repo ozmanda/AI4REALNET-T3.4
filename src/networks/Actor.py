@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-from typing import List
+from typing import List, Dict
 from argparse import Namespace
 
 from src.networks.Attention import MultiHeadAttention
@@ -17,22 +17,22 @@ from src.networks.Recursive import RecursiveLayer
 from src.utils.obs_utils import direction_tensor
 
 
-class Actor(nn.Module): 
-    def __init__(self, args: Namespace, n_features: int, n_actions: int):
+class Actor(nn.Module):  
+    def __init__(self, config_dict: Dict, n_features: int, n_actions: int):
         super().__init__()
         self.n_actions = n_actions
         self.n_features = n_features
-        self.hid_size: int = args.hid_size
-        self.layer_sizes: List[int] = args.layer_sizes
-        self.intent_size: int = args.intent_size
-        self.neighbour_depth: int = args.neighbour_depth
+        self.hid_size: int = config_dict['hid_size']
+        self.layer_sizes: List[int] = config_dict['layer_sizes']
+        self.intent_size: int = config_dict['intent_size']
+        self.neighbour_depth: int = config_dict['neighbour_depth']
         
         self.state_encoder = nn.Sequential(RecursiveLayer(n_features, self.hid_size))
         self.policy_hidden_layer = nn.Linear(self.hid_size, self.intent_size + self.neighbour_depth)
         self.intent_encoding = nn.Sequential(nn.Linear(self.hid_size, self.intent_size, bias=False),
                                                   nn.ReLU(inplace=True))
-        self.intent_attention = MultiHeadAttention(num_features=n_features, num_heads=args.n_heads)
-        self.action_decoder = nn.Sequential(nn.Linear(args.thought_size + (args.intent_size + self.neighbour_depth) * args.n_heads, 256), 
+        self.intent_attention = MultiHeadAttention(num_features=n_features, num_heads=config_dict['n_heads'])
+        self.action_decoder = nn.Sequential(nn.Linear(config_dict['thought_size'] + (config_dict['intent_size'] + self.neighbour_depth) * config_dict['n_heads'], 256), 
                                             nn.ReLU(inplace=True), 
                                             nn.Linear(256, self.n_actions))
 
