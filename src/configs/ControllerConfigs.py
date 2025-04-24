@@ -1,40 +1,13 @@
 from src.algorithms.PPO.PPOController import PPOController
-from typing import Dict, List
+from typing import Dict, List, Union
 
 class PPOControllerConfig(): 
-    def __init__(self,
-                 state_size: int,
-                 action_size: int,
-                 neighbour_depth: int, 
-                 optimiser_config: Dict[str],
-                 batch_size: int,
-                 gae_horizon: float, 
-                 n_epochs_update: int, 
-                 gamma: float,
-                 lam: float, 
-                 clip_epsilon: float,
-                 value_loss_coefficient: float, 
-                 entropy_coefficient: float,
-                 actor_layers_sizes: List[int],
-                 critic_layers_sizes: List[int], 
-                 ):
-        self.state_size = state_size
-        self.action_size = action_size
-        self.neighbour_depth = neighbour_depth
-        self.optimiser_config = optimiser_config
-        self.batch_size = batch_size
-        self.gae_horizon = gae_horizon
-        self.n_epochs_update = n_epochs_update
-        self.gamma = gamma
-        self.lam = lam
-        self.clip_epsilon = clip_epsilon
-        self.value_loss_coefficient = value_loss_coefficient
-        self.entropy_coefficient = entropy_coefficient
-        self.actor_layers_sizes = actor_layers_sizes
-        self.critic_layers_sizes = critic_layers_sizes
+    def __init__(self, config_dict: Dict[str, Union[Dict, str, float, int]]):
+        self.config_dict = config_dict
+        self.config_dict['actor_config']['actor_layers_sizes'] = [int(x) for x in config_dict['actor_layers_sizes'].values()]
+        self.config_dict['actor_config']['critic_layers_sizes'] = [int(x) for x in config_dict['critic_layers_sizes'].values()]
 
-    # TODO: implement config loading from .yaml
-        
+
     def create_controller(self) -> PPOController:
         return PPOController(state_size=self.state_size,
                              action_size=self.action_size,
