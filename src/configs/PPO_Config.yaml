@@ -3,19 +3,57 @@
 run_name: "ppo"
 n_episodes: 50
 seed: 42
+n_workers: 2
+max_optimisation_steps: 1000
 
-# training
-buffer_size: 100000
-batch_size: 32
-update_every: 8
-learning_rate: 0.0005
-tau: 0.001
-gamma: 0.99
-buffer_min_size: 0
-hidden_size: 256
-use_gpu: false
 
-# exploration vs. exploitation
-eps_start: 1.0
-eps_end: 0.01
-eps_decay: 0.995    # for 2500 timesteps
+# Controller Config
+controller_config: 
+  - state_size: 0
+  - action_size: 4
+  - neighbour_depth: 2
+  - optimiser_config:
+    - type: "adam"
+    - learning_rate: 1e-5
+  - batch_size: 32
+  - gae_horizon: 16
+  - n_epochs_update: 3
+  - gamma: 0.995
+  - lam: 0.95
+  - clip_epsilon: 0.2
+  - value_loss_coefficient: 0.5
+  - entropy_coefficient: 0.01
+  - tau: 0.99
+  - actor_config:
+    - hidden_size: 128
+    - intent_size: 32
+    - actor_layer_sizes: 
+      - 256
+      - 128
+  - critic_layer_sizes: 
+    - 256
+    - 128
+
+
+# Environment Config
+environment_config:
+  - height: 30
+  - width: 30
+  - n_agents: 8
+  - n_cities: 4
+  - grid_distribution: false
+  - max_rails_between_cities: 2
+  - max_rail_pairs_in_city: 2
+  - observation_builder_config: 
+    - type: "tree"
+    - predictor: "shortest_path"
+    - max_depth: 3
+  - malfunction_config:
+    - malfunction_rate: 1/1000
+    - min_duration: 20
+    - max_duration: 50
+  - speed_ratios: 
+    - 1.: 0.7
+    - 0.5: 0.3
+  - reward_config: 0
+  - random_seed: 42
