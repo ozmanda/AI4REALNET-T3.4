@@ -243,7 +243,7 @@ def direction_tensor(neighbour_depth) -> List[Tensor]:
 
     Each depth begins at left_child_index and ends at right_child_index, for example depth 1 = [0, 2], depth 2 = [3, 11], etc.
     """
-    # TODO: discuss the encoding of a ternary tree with Manuel 
+    # TODO: see generalisation below
     direction_tensor: Tensor = torch.zeros((2 ** (neighbour_depth + 1) - 2, neighbour_depth), dtype = torch.float64)
     for depth in range(1, neighbour_depth + 1):
         left_parent_index: int = 2 ** (depth - 1) -2
@@ -263,9 +263,12 @@ def direction_tensor(neighbour_depth) -> List[Tensor]:
 
 
 
-def get_depth(size):
+def get_depth(size, n_features = 12) -> int:
+    """
+    Calculates the depth of a tree based on the size of the observation and the number of features per node. Default is for the flatland environment tree observation with 12 features per node.
+    """
     for i in range(10):
-        if 2 ** i == size + 2:
+        if ((4 ** (i+1) - 1) // (4 - 1)) * n_features == size:
             return i
     raise ValueError('Depth outside of range')
         
