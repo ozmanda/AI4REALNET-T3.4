@@ -18,7 +18,7 @@ class FlatlandEnvConfig():
                  observation_builder_config: Dict = None,
                  malfunction_config: Dict[str, Union[float, int]] = None,
                  speed_ratios: Dict[float, float] = None,
-                 reward_config: Dict = None, 
+                 reward_config: Dict = None, # TODO: check how / where this is used
                  random_seed = 42):
         self.height = height
         self.width = width 
@@ -29,6 +29,7 @@ class FlatlandEnvConfig():
         self.max_rail_pairs_in_city = max_rail_pairs_in_city
         self.observation_builder_config = observation_builder_config
         self.malfunction_config = malfunction_config
+        self.speed_ratios = speed_ratios
         self.reward_config = reward_config
         self.random_seed = random_seed
 
@@ -53,7 +54,7 @@ class FlatlandEnvConfig():
             max_rail_pairs_in_city=self.max_rail_pairs_in_city,
             grid_mode=self.grid_distribution
         )
-        line_generator = sparse_line_generator(self.observation_builder_config['speed_ratios'])
+        line_generator = sparse_line_generator(self.speed_ratios)
 
         # Set malfunction generator
         if self.malfunction_config:
