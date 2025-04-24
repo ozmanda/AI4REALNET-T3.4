@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 from collections import defaultdict
-from typing import Dict, Tuple, List, DefaultDict
+from typing import Dict, Tuple, List, DefaultDict, Union
 
 from src.utils.obs_utils import tree_observation_dict
 from src.algorithms.PPO.PPOController import PPOController
@@ -11,7 +11,7 @@ from flatland.envs.rail_env import RailEnv
 from flatland.envs.step_utils.states import TrainState
 
 class PPORunner():
-    def __init__(self, env: RailEnv, controller: PPOController) -> None:
+    def __init__(self, runner_handle: Union[int, str], env: RailEnv, controller: PPOController) -> None:
         self.env: RailEnv = env
         self.controller: PPOController = controller 
         self.rollout: DefaultDict[int, PPORollout] = defaultdict(PPORollout)
