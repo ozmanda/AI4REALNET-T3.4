@@ -1,6 +1,7 @@
 """
 This module contains utility functions for manipulating and analyzing tree structures.
 """
+from typing import Dict
 
 class kTree():
     def __init__(self, n_children: int, depth: int = 2):
@@ -34,5 +35,21 @@ class kTree():
         for i in range(10):
             if (self.n_children ** i - 1) / (self.n_children - 1) == n_nodes:
                 return i
+            
+    def leaf_nodes(self, depth: int = None) -> int:
+        """Calculate the number of leaf nodes in a k-ary tree. """
+        return self.n_children ** depth if depth else self.n_children ** self.depth
+            
+
+    def get_indices(self, depth: int = None) -> Dict: 
+        """
+        Get the indices of the parent and child nodes in a k-ary tree. The indices are calculated based on the depth of the tree.
+        """
+        indices = {}
+        indices['parent_start'] = ((self.n_children ** depth - 1) // (self.n_children - 1)) - 1
+        indices['parent_end'] = ((self.n_children ** (depth + 1) - 1) // (self.n_children - 1)) - 1
+        indices['child_start'] = ((self.n_children ** (depth + 1) - 1) // (self.n_children - 1)) - 1
+        indices['child_end'] = ((self.n_children ** (depth + 2) - 1) // (self.n_children - 1)) - 1
+        return indices
 
 # TODO: implement data management (targeted at flatland environment tree observation)
