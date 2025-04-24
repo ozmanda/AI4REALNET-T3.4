@@ -1,29 +1,37 @@
-from argparse import Namespace
+import os
 import torch
 from torch import Tensor
+from copy import deepcopy
 from typing import List, Tuple, Dict
 from src.networks.Actor import Actor
 from src.networks.Critic import Critic
-from copy import deepcopy
 
 class PPOController():
     """
     Controller class for the PPO algorithm. Interacts with the environment, choosing actions according to the current policy.
     """
-    def __init__(self, args: Namespace, device: str) -> None:
-        self.args = args
+    def __init__(self, config_dict: Dict, device: str) -> None:
         self.device = device
-
-        # Hyperparameters
-        self.state_size: int = args.state_size
-        self.action_size: int = args.action_size
-        self.gamma: float = args.gamma
-        self.entropy_coefficient: float = args.entropy_coefficient
+        self.config: Dict = config_dict
+        self.state_size = config_dict['state_size']
+        self.action_size = config_dict['action_size']
+        self.neighbour_depth = config_dict['neighbour_depth']
+        self.hidden_size = config_dict['actor_config']['hidden_size']
+        self.batch_size = config_dict['batch_size']
+        self.gae_horizon = config_dict['gae_horizon']
+        self.n_epochs_update = config_dict['n_epochs_update']
+        self.gamma = config_dict['gamma']
+        self.lam = config_dict['lam']
+        self.clip_epsilon = config_dict['clip_epsilon']
+        self.value_loss_coefficient = config_dict['value_loss_coefficient']
+        self.entropy_coefficient = config_dict['entropy_coefficient']
+        self.tau = config_dict['tau']
 
         # Initialise Networks
-        self.actor_network: Actor = Actor(args, n_features=self.state_size, n_actions=self.action_size).to(self.device)
+        self.actor_network: Actor = Actor(config_dict['actor_config'], n_features=self.state_size, n_actions=self.action_size).to(self.device)
         self.target_actor_network: Actor = deepcopy(self.actor_network).to(self.device)
-        self.critic_network: Critic = Critic(args, n_features=self.state_size, layer_sizes=args.critic_hidden_layer_sizes).to(self.device)
+        self.critic_network: Critic = Critic(n_features=self.state_size, 
+                                             layer_sizes=config_dict['critic_layer_sizes']).to(self.device)
 
 
     def _make_logits(self, states: Tensor, neighbour_states: Tensor) -> Tensor:
@@ -39,7 +47,7 @@ class PPOController():
         """
         encoded_states = self.actor_network.encode(states)
 
-        neighbour_encoded_states: Tensor = torch.zeros(neighbour_states.size(0), neighbour_states.size(1), self.args.hidden_size, device=self.device)
+        neighbour_encoded_states: Tensor = torch.zeros(neighbour_states.size(0), neighbour_states.size(1), self.hidden_size, device=self.device) #? necessary?
         valid_neighbours: Tensor = torch.norm(neighbour_states, dim=2) > 1e-9 #? is this correct? Vector norm over dim 2?
 
         if torch.any(valid_neighbours): 
@@ -72,7 +80,7 @@ class PPOController():
         return actions, log_probs
 
 
-    def sample_action(self, handles: List[str], state_dict: Dict[str, Tensor], neighbours_state_dict: Dict[str, Tensor]) -> Tuple[Dict, Dict]:
+    def sample_action(self, handles: List[str], state_dict: Dict[str, Tensor], neighbours_state_dict: Dict[str, Tensor]) -> Tuple[Dict[int, int], Dict[int, Tensor]]:
         """
         Sample an action from the distribution provided by the Actor network based on the current and neighbour states
 
@@ -97,55 +105,63 @@ class PPOController():
         return actions, log_probs
 
 
-    def update_networks(self, network_parameters: Tuple) -> None:
+    def update_networks(self, network_parameters: Tuple[Dict, ...]) -> None:
         """
         Update the networks with the given parameters.
 
         Parameters:
-            - network_parameters  Tuple     Tuple of network parameters
+            - network_parameters  Tuple     Tuple of network parameters (actor, critic, target_actor)
         """
-        pass
+        actor_state_dict, critic_state_dict, target_actor_state_dict = network_parameters
+        self.actor_network.load_state_dict(actor_state_dict)
+        self.critic_network.load_state_dict(critic_state_dict)
+        self.target_actor_network.load_state_dict(target_actor_state_dict)
 
 
     def get_network_parameters(self) -> Tuple:
         """
-        Get the network parameters.
+        Get the network parameters for the actor and critic networks.
 
         Returns:
             - network_parameters  Tuple     Tuple of network parameters
         """
-        pass
+        actor_state_dict = self.actor_network.state_dict()
+        critic_state_dict = self.critic_network.state_dict()
+        return actor_state_dict, critic_state_dict
 
 
     def actor_hard_update(self) -> None:
-        """
-        Perform a hard update of the networks.
-        """
-        pass
+        """ Perform a hard update of the actor target network. """
+        self.target_actor_network.load_state_dict(self.actor_network.state_dict())
 
 
     def actor_soft_update(self) -> None:
-        """
-        Perform a soft update of the networks.
-        """
-        pass
+        """ Perform a soft update of the networks. """
+        for target_parameter, local_parameter in zip(self.actor_network.parameters(), self.target_actor_network.parameters()):
+            target_parameter.data.copy_(self.tau * local_parameter.data + (1 - self.tau) * target_parameter.data)
 
 
     def load_controller(self, path: str) -> None:
         """
-        Load the controller from the given path.
+        Load the controller from the given path. Target actor network is initialised with hard actor network update.
 
         Parameters:
-            - path      str       Path to the controller file
+            - path      str       Path to the controller file (.torch file)
         """
-        pass
+        model = torch.load(path)
+        self.actor_network.load_state_dict(model['actor'])
+        self.critic_network.load_state_dict(model['critic'])
+        self.actor_hard_update()
 
 
-    def save_controller(self, path: str) -> None:
+    def save_controller(self, path: str, name: str = 'controller.torch') -> None:
         """
-        Save the controller to the given path.
+        Save the controller to the given path. Default model name is "controller.torch",
 
         Parameters:
             - path      str       Path to save the controller file
+            - name      str       Name of the controller file (optional)
         """
-        pass
+        torch.save(self.config, os.path.join(path, 'config.torch'))
+        actor_state, critic_state = self.get_network_parameters()
+        torch.save({'actor': actor_state, 'critic': critic_state}, os.path.join(path, name))
