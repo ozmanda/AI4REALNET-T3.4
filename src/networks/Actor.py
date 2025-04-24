@@ -22,7 +22,7 @@ class Actor(nn.Module):
         super().__init__()
         self.n_actions = n_actions
         self.n_features = n_features
-        self.hid_size: int = config_dict['hid_size']
+        self.hid_size: int = config_dict['hidden_size']
         self.layer_sizes: List[int] = config_dict['layer_sizes']
         self.intent_size: int = config_dict['intent_size']
         self.neighbour_depth: int = config_dict['neighbour_depth']
@@ -31,7 +31,7 @@ class Actor(nn.Module):
         self.policy_hidden_layer = nn.Linear(self.hid_size, self.intent_size + self.neighbour_depth)
         self.intent_encoding = nn.Sequential(nn.Linear(self.hid_size, self.intent_size, bias=False),
                                                   nn.ReLU(inplace=True))
-        self.intent_attention = MultiHeadAttention(num_features=n_features, num_heads=config_dict['n_heads'])
+        self.intent_attention = MultiHeadAttention(n_features=n_features, num_heads=config_dict['n_heads'])
         self.action_decoder = nn.Sequential(nn.Linear(config_dict['thought_size'] + (config_dict['intent_size'] + self.neighbour_depth) * config_dict['n_heads'], 256), 
                                             nn.ReLU(inplace=True), 
                                             nn.Linear(256, self.n_actions))
@@ -49,7 +49,7 @@ class Actor(nn.Module):
 
     def act(self, encoded_state: Tensor, agent_signals: Tensor) -> Tensor:
         """
-        Outputs the log_probabilities (??) of the action options
+        Outputs the log_probabilities of the action options
 
         Parameters: 
             - encoded_state     Tensor      (batch_size, hidden_size)
