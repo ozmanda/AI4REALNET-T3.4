@@ -7,12 +7,13 @@ from src.utils.obs_utils import tree_observation_dict
 from src.algorithms.PPO.PPOController import PPOController
 from src.algorithms.PPO.PPORollout import PPORollout, PPOTransition
 
+from src.configs.EnvConfig import FlatlandEnvConfig
 from flatland.envs.rail_env import RailEnv
 from flatland.envs.step_utils.states import TrainState
 
 class PPORunner():
-    def __init__(self, runner_handle: Union[int, str], env: RailEnv, controller: PPOController) -> None:
-        self.env: RailEnv = env
+    def __init__(self, runner_handle: Union[int, str], env_config: FlatlandEnvConfig, controller: PPOController) -> None:
+        self.env: RailEnv = env_config.create_env()
         self.controller: PPOController = controller 
         self.rollout: DefaultDict[int, PPORollout] = defaultdict(PPORollout)
 
