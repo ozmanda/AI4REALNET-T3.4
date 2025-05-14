@@ -25,6 +25,14 @@ class MultiHeadAttention(nn.Module):
 
     #? do we want to keep or rename query and key
     def forward(self, key: Tensor, query: Tensor, value: Tensor) -> Tensor:
+        """
+        Forward pass of the multi-head attention layer.
+        Parameters:
+            - key:      Tensor (batch_size, len_key, n_features)
+            - query:    Tensor (batch_size, len_query, n_features)
+            - value:    Tensor (batch_size, len_value, n_features)
+
+        """
         batchsize: int = key.size(0)
         len_key: int = key.size(1)
         len_query: int = query.size(1)
