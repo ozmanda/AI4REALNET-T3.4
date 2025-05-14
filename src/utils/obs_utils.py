@@ -10,12 +10,13 @@ from torch import Tensor
 from typing import Tuple, Union, Dict, List
 from flatland.envs.observations import Node
 
-def calculate_state_size(max_depth: int) -> int:
+def calculate_state_size(max_depth: int) -> Tuple[int, int]:
     '''
     Calculates the state size of the tree observation based on the maximum depth of the tree.
     The state size is calculated as the number of nodes in the tree multiplied by the number of features (12) per node.
     '''
-    return _calculate_tree_nodes(max_depth) * 12
+    n_nodes = _calculate_tree_nodes(max_depth)
+    return n_nodes, n_nodes * 12
 
 def _calculate_tree_nodes(max_depth: int) -> int:   
     return int((4 ** (max_depth + 1) - 1) / 3) #* geometric progression
@@ -128,6 +129,7 @@ def normalise_tree_observation(observation, tree_depth: int, observation_radius=
     normalised_observation = np.concatenate((np.concatenate((data, distance)), agent_data))
     return normalised_observation
 
+
 def obs_dict_to_tensor(observation: Dict[int, Node], obs_type: str, n_agents: int, max_depth: int, n_nodes: int) -> Tensor:
     ''' 
     Transforms observations from flatland RailEnv to torch tensors, also flattening them to be
@@ -142,14 +144,13 @@ def obs_dict_to_tensor(observation: Dict[int, Node], obs_type: str, n_agents: in
     elif obs_type == 'tree':
         obs_tensor = tree_observation_tensor(observation, max_depth, n_nodes)
 
-    # flatland fills missing values with -inf - replace with -999
-    obs_tensor[obs_tensor == -np.inf] = -9999
-    obs_tensor[obs_tensor == np.inf] = 9999
+    # flatland fills missing values with -inf - replace with zero passing
+    obs_tensor[obs_tensor == -np.inf] = 0
+    obs_tensor[obs_tensor == np.inf] = 0
 
     return obs_tensor.view(n_agents, -1)
 
 
-# TODO: add dict typing
 def global_observation_tensor(observation: Dict[int, np.ndarray]) -> Tensor:
     '''
     Transforms global observations from flatland RailEnv to torch tensors. 
@@ -162,6 +163,7 @@ def global_observation_tensor(observation: Dict[int, np.ndarray]) -> Tensor:
                                                 observation[agent_id][1], 
                                                 observation[agent_id][2]), axis=2)
     return torch.tensor(observation, dtype=torch.float32)
+
 
 def tree_observation_tensor(observation: dict, max_depth: int, n_nodes: int) -> Tensor:
     '''
@@ -178,6 +180,7 @@ def tree_observation_dict(observation: dict, max_depth: int, n_nodes: int) -> Di
     for agent in observation.keys():
         agent_obs[agent] = split_tree(observation[agent], max_depth)
     return agent_obs
+
 
 def split_tree(tree: Node, max_depth: int):
     ''' Splits the tree observation into an ndarray of features, initial splitting function '''
@@ -243,7 +246,7 @@ def direction_tensor(neighbour_depth) -> List[Tensor]:
 
     Each depth begins at left_child_index and ends at right_child_index, for example depth 1 = [0, 2], depth 2 = [3, 11], etc.
     """
-    # TODO: see generalisation below
+    # TODO: adjust to quartenary tree
     direction_tensor: Tensor = torch.zeros((2 ** (neighbour_depth + 1) - 2, neighbour_depth), dtype = torch.float64)
     for depth in range(1, neighbour_depth + 1):
         left_parent_index: int = 2 ** (depth - 1) -2
@@ -260,7 +263,6 @@ def direction_tensor(neighbour_depth) -> List[Tensor]:
         direction_tensor[left_child_index+1 : right_child_index : 2, depth-1] = 1
 
     return direction_tensor
-
 
 
 def get_depth(size, n_features = 12) -> int:
