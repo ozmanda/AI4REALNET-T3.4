@@ -15,9 +15,10 @@ from typing import Dict, Tuple
 class PPOController_Test(unittest.TestCase):
     def setup(self) -> PPOController: 
         env, max_depth = self.setup_small_env()
-        state_size = calculate_state_size(max_depth)
+        n_nodes, state_size = calculate_state_size(max_depth)
         self.test_config_dict = {
             'state_size': state_size,
+            'n_features': 12,
             'action_size': 5,
             'neighbour_depth': 3,
             'batch_size': 32,
@@ -36,9 +37,13 @@ class PPOController_Test(unittest.TestCase):
                 'intent_size': 16,
                 'activation_function': 'relu',
                 'n_heads': 3,
-                'neighbour_depth': 3
+                'neighbour_depth': 3,
+                'n_nodes': n_nodes
             },
-            'critic_layer_sizes': [128, 64]
+            'critic_config': {
+                'critic_layer_sizes': [128, 64],
+                'n_nodes': n_nodes
+            }
         }
         return PPOController(self.test_config_dict, device='cpu')
     
@@ -80,14 +85,14 @@ class PPOController_Test(unittest.TestCase):
         self.assertEqual(len(actions), n_agents)
         for agent_id in handles:
             self.assertIn(agent_id, actions)
-            self.assertIsInstance(actions[agent_id], int)
+            self.assertEqual(actions[agent_id][0].dim(), 0)
 
         # check log_probs
         self.assertIsInstance(log_probs, dict)
         self.assertEqual(len(log_probs), n_agents)
         for agent_id in handles:
             self.assertIn(agent_id, log_probs)
-            self.assertIsInstance(log_probs[agent_id], Tensor)
+            self.assertIsInstance(log_probs[agent_id][0], Tensor)
 
 
     def test_env_config(self):
