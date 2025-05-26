@@ -7,31 +7,19 @@ from flatland.envs.line_generators import sparse_line_generator
 from flatland.envs.malfunction_generators import MalfunctionParameters, ParamMalfunctionGen
 
 class FlatlandEnvConfig():
-    def __init__(self,
-                 height: int = 30, 
-                 width: int = 30,
-                 n_agents: int = 8,
-                 n_cities: int = 4, 
-                 grid_distribution: bool = False,
-                 max_rails_between_cities: int = 2,
-                 max_rail_pairs_in_city: int = 2,
-                 observation_builder_config: Dict = None,
-                 malfunction_config: Dict[str, Union[float, int]] = None,
-                 speed_ratios: Dict[float, float] = None,
-                 reward_config: Dict = None, # TODO: check how / where this is used
-                 random_seed = 42):
-        self.height = height
-        self.width = width 
-        self.n_agents = n_agents
-        self.n_cities = n_cities
-        self.grid_distribution = grid_distribution
-        self.max_rails_between_cities = max_rails_between_cities
-        self.max_rail_pairs_in_city = max_rail_pairs_in_city
-        self.observation_builder_config = observation_builder_config
-        self.malfunction_config = malfunction_config
-        self.speed_ratios = speed_ratios
-        self.reward_config = reward_config
-        self.random_seed = random_seed
+    def __init__(self, env_config: Dict[str, Union[int, float]]):
+        self.height: int = env_config['height']
+        self.width: int = env_config['width'] 
+        self.n_agents: int = env_config['n_agents']
+        self.n_cities: int = env_config['n_cities']
+        self.grid_distribution: bool = env_config['grid_distribution']
+        self.max_rails_between_cities: int = env_config['max_rails_between_cities']
+        self.max_rail_pairs_in_city: int = env_config['max_rail_pairs_in_city']
+        self.observation_builder_config: Dict = env_config['observation_builder_config']
+        self.malfunction_config: Dict[str, Union[float, int]] = env_config['malfunction_config']
+        self.speed_ratios: Dict[Dict[float, int], float] = env_config['speed_ratios']
+        self.reward_config: int = env_config['reward_config']
+        self.random_seed: int = env_config['random_seed']
 
     def create_env(self): 
         """
