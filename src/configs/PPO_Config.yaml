@@ -9,7 +9,6 @@ max_optimisation_steps: 1000
 
 # Controller Config
 controller_config: 
-    state_size: 0
     action_size: 4
     neighbour_depth: 2
     optimiser_config:
@@ -24,14 +23,17 @@ controller_config:
     value_loss_coefficient: 0.5
     entropy_coefficient: 0.01
     tau: 0.99
+    n_features: 12
     actor_config:
+      n_heads: 5
       hidden_size: 128
       intent_size: 32
-      actor_layer_sizes: 
+      neighbour_depth: 3
+      layer_sizes: 
       - 256
       - 128
     critic_config:
-      critic_layer_sizes: 
+      layer_sizes: 
       - 256
       - 128
 
@@ -50,7 +52,7 @@ environment_config:
       predictor: "shortest_path"
       max_depth: 3
     malfunction_config:
-      malfunction_rate: 1/1000
+      malfunction_rate: 0.001
       min_duration: 20
       max_duration: 50
     speed_ratios: 
