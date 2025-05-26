@@ -11,12 +11,13 @@ from src.configs.EnvConfig import FlatlandEnvConfig
 from flatland.envs.rail_env import RailEnv
 from flatland.envs.step_utils.states import TrainState
 
+
 class PPORunner():
     def __init__(self, runner_handle: Union[int, str], env_config: FlatlandEnvConfig, controller: PPOController) -> None:
         self.env: RailEnv = env_config.create_env()
         self.controller: PPOController = controller 
         self.rollout: DefaultDict[int, PPORollout] = defaultdict(PPORollout)
-
+        self.max_depth = self.env.obs_builder.max_depth
 
     def run(self, max_steps: int) -> Tuple[DefaultDict[int, PPORollout], Dict]:
         """
@@ -30,22 +31,28 @@ class PPORunner():
             - rollout       PPORollout      The collected rollouts
             - stats         Dict            Statistics about the episode (e.g., rewards, lengths)
         """
-        state_dict_np, _ = self.env.reset()
-        state_dict_tensor: Dict[int, Tensor] = tree_observation_dict(state_dict_np, self.env.agents) #! this isn't correct
-        self.obs_tensor_size = state_dict_tensor[0].size()
+        state_array, info = self.env.reset()
+        state_tensor: Dict[int, Tensor] = tree_observation_dict(state_array, self.max_depth) # TODO: fix this!
+        self.obs_tensor_size = state_tensor[0].size()
 
-        self.prev_valid_state: Dict[int, Tensor] = state_dict_tensor
+        self.prev_valid_state: Dict[int, Tensor] = state_tensor
         self.prev_valid_action: Dict[int, int] = {}
         self.prev_valid_action_log_prob: Dict[int, Tensor] = {} #? is this correct?
         self.prev_step: Tensor = torch.zeros(len(state_tensor), dtype=torch.float64)
-        self.neighbours_states: Dict[int, List[Tensor]] = defaultdict(list)
+        self.neighbour_states: Dict[int, List[Tensor]] = defaultdict(list)
 
         steps_done = 0
 
         while True: 
-            action_dict, log_probs = self._select_actions()
-            next_state_dict, reward, done, _ = self.env.step(action_dict) # TODO: check if wrapping is necessary for reward and info
-            next_state_tensor: Dict[int, Tensor] = tree_observation_dict(next_state_dict, self.env.agents)
+            if any(info['action_required'].values()):
+                action_dict, log_probs = self._select_actions(state_tensor)
+                next_state_array, reward, done, info = self.env.step(action_dict)
+            else:
+                action_dict = {handle: 0 for handle in state_tensor.keys()}
+                log_probs = {handle: torch.zeros(1, dtype=torch.float64) for handle in state_tensor.keys()}
+                next_state_array, reward, done, info = self.env.step(action_dict) # TODO: check if wrapping is necessary for reward and info
+                
+            next_state_tensor: Dict[int, Tensor] = tree_observation_dict(next_state_array, self.max_depth)
             self._save_transitions(state_tensor, action_dict, log_probs, next_state_tensor, reward, done, steps_done)
 
             state_tensor = next_state_tensor
@@ -67,29 +74,30 @@ class PPORunner():
         valid_handles: List = []
         internal_state: Dict = {}
 
-        for handle in self.env.agents:
+        for agent in self.env.agents:
             #! original code uses self.env.obs_builder.deadlock_checker.is_deadlocked(handle) --> not sure what the new implementation is
-            if self.env.agents[handle].state in (TrainState.MOVING, TrainState.READY_TO_DEPART) \
-                and not self.env.agents[handle].state in (TrainState.STOPPED, TrainState.MALFUNCTION, TrainState.DONE):
-                valid_handles.append(handle)
-                if handle in state:
-                    internal_state[handle] = state[handle]
+            if agent.state in (TrainState.MOVING, TrainState.READY_TO_DEPART) \
+                and not agent.state in self.env.motionCheck.svDeadlocked: #! see above
+                valid_handles.append(agent.handle)
+                if agent.handle in state:
+                    internal_state[agent.handle] = state[agent.handle]
                 else: 
-                    internal_state[handle] = torch.tensor() #! original code uses self.env.obs_builder._get_internal(handle) --> not sure what the new implementation is
-        
+                    internal_state[agent.handle] = torch.tensor() #! original code uses self.env.obs_builder._get_internal(handle) --> not sure what the new implementation is
+
         for handle in state.keys():
             if self.env.agents[handle].state in (TrainState.MOVING, TrainState.READY_TO_DEPART) \
-                and not self.env.agents[handle].state in (TrainState.STOPPED, TrainState.MALFUNCTION, TrainState.DONE): #! see above
+                and not self.env.agents[handle].state in self.env.motionCheck.svDeadlocked: #! see above
                 valid_handles.append(handle)        
                 #! original code uses self.env.obs_builder.encountered(handle) to decide on neighbours
-                for neighbour_handle in self.env.agents:
-                    if neighbour_handle in internal_state:
-                        self.neighbours_states[handle].append(internal_state[neighbour_handle])
+                for neighbour_agent in self.env.agents:
+                    if neighbour_agent.handle in internal_state.keys():
+                        self.neighbour_states[handle].append(internal_state[neighbour_agent.handle])
                     else:
-                        self.neighbours_states[handle].append(torch.zeros(self.obs_tensor_size)) 
-
-        action_dict, log_probs = self.controller.sample_action(valid_handles, state, self.neighbours_states)                    
-        return action_dict, log_probs
+                        self.neighbour_states[handle].append(torch.zeros(self.obs_tensor_size)) 
+        if valid_handles:
+            action_dict, log_probs = self.controller.sample_action(valid_handles, state, self.neighbour_states)              
+            return action_dict, log_probs
+        else: return {}, {}
 
 
     def _save_transitions(self, state_dict: Dict[int, Tensor], action_dict: Dict, log_probs: Dict, next_state: Dict, reward: Dict, done: Dict, step: int) -> None:
@@ -113,7 +121,8 @@ class PPORunner():
                               next_state[handle],
                               reward[handle],
                               done[handle],
-                              torch.stack(self.neighbours_states[handle]),)
+                              torch.stack(self.neighbour_states[handle]) if self.neighbour_states[handle] else None,
+                              )
             )
 
 

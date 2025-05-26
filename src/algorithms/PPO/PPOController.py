@@ -13,8 +13,8 @@ class PPOController():
     def __init__(self, config_dict: Dict, device: str) -> None:
         self.device = device
         self.config: Dict = config_dict
-        self.state_size = config_dict['state_size']
-        self.action_size = config_dict['action_size']
+        config_dict['state_size']
+        self.action_size = config_dict['action_size'] # TODO: actions need to be taken from environment and not from actor config
         self.neighbour_depth = config_dict['neighbour_depth']
         self.hidden_size = config_dict['actor_config']['hidden_size']
         self.batch_size = config_dict['batch_size']
@@ -46,20 +46,15 @@ class PPOController():
             - logits            Tensor      (batch_size, n_actions)
         """
         n_agents = states.size(0)
-        states = states.view(-1, states.size(2)) # (n_agents * batch_size, n_features)
         encoded_states = self.actor_network.encode(states)
 
         neighbour_encoded_states: Tensor = torch.zeros(neighbour_states.size(0), neighbour_states.size(1), self.hidden_size, device=self.device) #? necessary?
-        valid_neighbours: Tensor = torch.linalg.matrix_norm(neighbour_states) > 1e-9 #? is this correct?
+        valid_neighbours: Tensor = torch.linalg.matrix_norm(neighbour_states) > -1 #? is this correct?
 
         if torch.any(valid_neighbours): 
-            neighbour_encoded_states = self.actor_network.encode(neighbour_states[valid_neighbours].view(-1, neighbour_states.size(2)))
+            neighbour_encoded_states = self.actor_network.encode(neighbour_states[valid_neighbours]).view(n_agents, -1, self.hidden_size)
         
         neighbour_signals: Tensor = self.actor_network.intent(neighbour_encoded_states)
-
-        # resize to 
-        neighbour_signals = neighbour_signals.view(-1, n_agents, neighbour_signals.size(1))
-        encoded_states = encoded_states.view(-1, n_agents, self.hidden_size)
 
         logits: Tensor = self.actor_network.act(encoded_states, neighbour_signals)
         return logits
@@ -106,17 +101,18 @@ class PPOController():
             - log_probs         Dict[handle, Tensor]
         """
         states = torch.stack([state_dict[handle] for handle in handles])
-        neighbour_states = torch.stack([torch.stack([neighbours_state_dict[handle]]) for handle in handles])
+        try:
+            neighbour_states = torch.stack([torch.stack(neighbours_state_dict[handle]) for handle in handles])
+        except:
+            neighbour_states = torch.stack([torch.zeros(self.hidden_size, device=self.device) for handle in handles])
 
         with torch.no_grad(): 
             logits = self._make_logits(states, neighbour_states)
             action_distribution = torch.distributions.Categorical(logits=logits)
-            actions = action_distribution.sample()
+            actions = action_distribution.sample() # TODO: same agent handle in twice, find out why!
             log_probs = action_distribution.log_prob(actions)
         
-        actions = actions.view(actions.size(1), -1)
-        log_probs = log_probs.view(log_probs.size(1), -1)
-        actions = {handle: actions[handle] for handle in handles}
+        actions = {handle: actions[handle] for handle in handles} #* this cancels out the double handle, but still figure out why
         log_probs = {handle: log_probs[handle] for handle in handles}
         
         return actions, log_probs

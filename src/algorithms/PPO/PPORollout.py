@@ -3,14 +3,14 @@ from typing import Tuple, List
 from collections import namedtuple
 from itertools import chain
 
-PPOTransition = namedtuple('PPOTransition', ('state', 'action', 'log_prob', 'reward', 'next_state', 'done', 'neighbour_states', 'value'))
+PPOTransition = namedtuple('PPOTransition', ('state', 'action', 'log_prob', 'reward', 'next_state', 'done', 'neighbour_states'))
 
 class PPORollout():
     """ Rollout class for the PPO algorithm. Gathers experience tuples with which the learner then updates the policy. """
 
     def __init__(self): 
         self.transitions: List[PPOTransition] = []
-        self.gae
+        self.gae = None
 
 
     def append_transition(self, transition: PPOTransition) -> None:
