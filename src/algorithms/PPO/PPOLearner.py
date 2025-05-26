@@ -6,6 +6,7 @@ from typing import Dict, Tuple, List
 from torch.distributions import Categorical
 
 from src.utils.tensor_utils import _permute_tensors
+from src.utils.obs_utils import calculate_state_size
 from src.training.loss import value_loss, value_loss_with_IS, policy_loss
 
 from src.algorithms.PPO.PPOController import PPOController
@@ -20,9 +21,19 @@ class PPOLearner():
     """
     Learner class for the PPO algorithm, updates the policy based on experiences (rollouts).
     """
-    def __init__(self, args, controller_config: PPOControllerConfig, env_config: FlatlandEnvConfig, device: str, n_workers: int = 1) -> None: 
+    def __init__(self,  controller_config: PPOControllerConfig, env_config: FlatlandEnvConfig, device: str, n_workers: int = 1) -> None: 
         self.n_workers = n_workers
         self.device = device
+
+        n_nodes, state_size = calculate_state_size(env_config.observation_builder_config['max_depth'])
+        controller_config.config_dict['n_nodes'] = n_nodes
+        controller_config.config_dict['state_size'] = state_size
+
+        self.max_depth = env_config['max_depth']
+        (env_config['observation_builder_config']['max_depth'])
+        controller_config['actor_config']['n_nodes'] = n_nodes # TODO: add n_nodes as a model parameter
+        controller_config['critic_config']['n_nodes'] = n_nodes
+        controller_config['state_size'] = state_size
         self.controller: PPOController = controller_config.create_controller()
         # self.judge = 
         self.device = device
@@ -38,7 +49,7 @@ class PPOLearner():
 
         self.workers = [None] * n_workers
         for runner_handle in range(n_workers):
-            self.workers[runner_handle] = PPORunner(runner_handle, controller_config, args, num_gpus) # TODO: check this initialisation -> environment must be passed
+            self.workers[runner_handle] = PPORunner(runner_handle, env_config, num_gpus) # TODO: check this initialisation -> environment must be passed
             env_config.update_random_seed()
 
         self.batch_size = controller_config.batch_size
