@@ -6,14 +6,16 @@ from src.utils.utils import max_lowerthan, min_greaterthan
 import numpy as np
 import torch
 from torch import Tensor
-from torch import Tensor
 from typing import Tuple, Union, Dict, List
 from flatland.envs.observations import Node
 
 def calculate_state_size(max_depth: int) -> Tuple[int, int]:
     '''
-    Calculates the state size of the tree observation based on the maximum depth of the tree.
-    The state size is calculated as the number of nodes in the tree multiplied by the number of features (12) per node.
+    Calculates the number of nodes in the tree and the state size of the tree observation based on the maximum depth of the tree.
+    
+    Returns: 
+      - n_nodes: the number of nodes in the tree
+      - state_size: the size of the state space, which is the number of nodes multiplied by 12
     '''
     n_nodes = _calculate_tree_nodes(max_depth)
     return n_nodes, n_nodes * 12
@@ -175,50 +177,54 @@ def tree_observation_tensor(observation: dict, max_depth: int, n_nodes: int) -> 
     return torch.Tensor(agents_obs)
 
 
-def tree_observation_dict(observation: dict, max_depth: int, n_nodes: int) -> Dict[int, Tensor]:
+def tree_observation_dict(observation: dict, max_depth: int) -> Dict[int, Tensor]:
     agent_obs: Dict[int, Tensor] = {}
     for agent in observation.keys():
-        agent_obs[agent] = split_tree(observation[agent], max_depth)
+        obs = split_tree(observation[agent], max_depth).reshape(-1)
+        obs[obs == -np.inf] = -1  
+        obs[obs == np.inf] = -1
+        agent_obs[agent] = obs
     return agent_obs
 
 
-def split_tree(tree: Node, max_depth: int):
+def split_tree(tree: Node, max_depth: int) -> Tensor: # TODO: switch to torch.Tensor
     ''' Splits the tree observation into an ndarray of features, initial splitting function '''
-    features = split_features(tree)
+    features: Tensor = split_features(tree)
 
     for direction in TreeObsForRailEnv.tree_explored_actions_char:
-        child_features = split_subtree(tree.childs[direction], 1, max_depth)
-        features = np.concatenate((features, child_features), axis=0)
+        child_features: Tensor = split_subtree(tree.childs[direction], 1, max_depth)
+        features: Tensor = torch.cat((features, child_features), axis=0)
 
     return features
 
 
-def split_subtree(node: Union[Node, float], current_depth: int, max_depth: int):
+def split_subtree(node: Union[Node, float], current_depth: int, max_depth: int) -> Tensor:
     ''' Recursively splits the subtree observation into an ndarray of features '''
     # case: terminal node
-    if node == -np.inf:
+    if node == -np.inf or node == np.inf:
         remaining_depth: int = max_depth - current_depth
         #* this gives the right answer, but I don't understand how it is deduced
         num_remaining_nodes: int = int((4 ** (remaining_depth + 1) - 1) / (4 - 1))
-        node_features = [-np.inf] * 12 * num_remaining_nodes
-        return np.reshape(node_features, newshape=(num_remaining_nodes, 12))
+        node_features = [-1] * 12 * num_remaining_nodes #! this is changed from -np.inf to -1 to avoid issues with torch
+        node_features = torch.tensor(node_features, dtype=torch.float32).reshape(num_remaining_nodes, 12)
+        return node_features
     
-    features = split_features(node)
+    features: Tensor = split_features(node)
 
     # case: leaf node
     if not node.childs:
         return features
     
     for direction in TreeObsForRailEnv.tree_explored_actions_char:
-        child_features = split_subtree(node.childs[direction], current_depth + 1, max_depth)
-        features = np.concatenate((features, child_features), axis=0)
+        child_features: Tensor = split_subtree(node.childs[direction], current_depth + 1, max_depth)
+        features: Tensor = torch.cat((features, child_features), axis=0)
 
     return features
 
 
-def split_features(node: Node) -> np.ndarray:
-    ''' Splits the features of a single node into an ndarray of shape (1, 12)'''
-    features = np.zeros(12)
+def split_features(node: Node) -> Tensor:
+    ''' Splits the features of a single node into a Tensor of shape (1, 12)'''
+    features = torch.zeros(12)
     features[0] = node.dist_own_target_encountered
     features[1] = node.dist_other_target_encountered
     features[2] = node.dist_other_agent_encountered
@@ -234,8 +240,7 @@ def split_features(node: Node) -> np.ndarray:
     features[10] = node.speed_min_fractional
     features[11] = node.num_agents_ready_to_depart
 
-    features = np.expand_dims(features, axis=0)
-
+    features = features.unsqueeze(0)
     return features
 
 
