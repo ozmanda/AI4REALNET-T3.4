@@ -72,26 +72,25 @@ class PPORunner():
         Select actions for all agents based on their current states.
         """
         valid_handles: List = []
-        internal_state: Dict = {}
+        valid_agent_states: Dict = {}
+        self.neighbour_states.clear()  # Reset neighbour states for the new step
 
         for agent in self.env.agents:
-            #! original code uses self.env.obs_builder.deadlock_checker.is_deadlocked(handle) --> not sure what the new implementation is
             if agent.state in (TrainState.MOVING, TrainState.READY_TO_DEPART) \
-                and not agent.state in self.env.motionCheck.svDeadlocked: #! see above
-                valid_handles.append(agent.handle)
+                and not agent.handle in self.env.motionCheck.svDeadlocked: 
                 if agent.handle in state:
-                    internal_state[agent.handle] = state[agent.handle]
+                    valid_agent_states[agent.handle] = state[agent.handle]
                 else: 
-                    internal_state[agent.handle] = torch.tensor() #! original code uses self.env.obs_builder._get_internal(handle) --> not sure what the new implementation is
+                    valid_agent_states[agent.handle] = torch.zeros(self.controller.state_size) #? if there's no observation, why fill with a zero tensor?
 
         for handle in state.keys():
             if self.env.agents[handle].state in (TrainState.MOVING, TrainState.READY_TO_DEPART) \
-                and not self.env.agents[handle].state in self.env.motionCheck.svDeadlocked: #! see above
+                and not self.env.agents[handle].state in self.env.motionCheck.svDeadlocked:
                 valid_handles.append(handle)        
                 #! original code uses self.env.obs_builder.encountered(handle) to decide on neighbours
                 for neighbour_agent in self.env.agents:
-                    if neighbour_agent.handle in internal_state.keys():
-                        self.neighbour_states[handle].append(internal_state[neighbour_agent.handle])
+                    if neighbour_agent.handle in valid_agent_states.keys():
+                        self.neighbour_states[handle].append(valid_agent_states[neighbour_agent.handle])
                     else:
                         self.neighbour_states[handle].append(torch.zeros(self.obs_tensor_size)) 
         if valid_handles:
