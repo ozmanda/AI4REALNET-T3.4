@@ -33,6 +33,7 @@ class RecursiveLayer(nn.Module):
             - state         Tensor      (batch_size, n_features*n_nodes)
         """
         return self.feature_encoding(state) # (batch_size, output_size)
+    
 
     def forward_old(self, state: Tensor): 
         """
