@@ -13,7 +13,7 @@ class PPOController():
     def __init__(self, config_dict: Dict, device: str) -> None:
         self.device = device
         self.config: Dict = config_dict
-        config_dict['state_size']
+        self.state_size = config_dict['state_size']
         self.action_size = config_dict['action_size'] # TODO: actions need to be taken from environment and not from actor config
         self.neighbour_depth = config_dict['neighbour_depth']
         self.hidden_size = config_dict['actor_config']['hidden_size']
@@ -104,7 +104,8 @@ class PPOController():
         try:
             neighbour_states = torch.stack([torch.stack(neighbours_state_dict[handle]) for handle in handles])
         except:
-            neighbour_states = torch.stack([torch.zeros(self.hidden_size, device=self.device) for handle in handles])
+            return 0 
+
 
         with torch.no_grad(): 
             logits = self._make_logits(states, neighbour_states)
@@ -112,9 +113,12 @@ class PPOController():
             actions = action_distribution.sample() # TODO: same agent handle in twice, find out why!
             log_probs = action_distribution.log_prob(actions)
         
-        actions = {handle: actions[handle] for handle in handles} #* this cancels out the double handle, but still figure out why
-        log_probs = {handle: log_probs[handle] for handle in handles}
-        
+        try:
+            actions = {handle: int(actions[idx]) for idx, handle in enumerate(handles)} #* this cancels out the double handle, but still figure out why
+            log_probs = {handle: log_probs[idx] for idx, handle in enumerate(handles)}
+        except IndexError as e:
+            return 0
+
         return actions, log_probs
 
 
