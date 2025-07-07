@@ -21,6 +21,13 @@
                 "--comm", "True",
                 "--comm_passes", "3"
             ]
+        },
+        {
+            "name": "ppo_train.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "ppo_train.py",
+            "console": "integratedTerminal",
         }
     ]
 }
