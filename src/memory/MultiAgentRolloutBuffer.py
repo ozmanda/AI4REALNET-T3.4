@@ -10,11 +10,9 @@ class MultiAgentRolloutBuffer:
     A class to manage the rollout buffer for storing transitions during the training of reinforcement learning agents in multi-agent scenarios.
     """
 
-    def __init__(self, n_agents: int = None, gamma: float = 0.99, lam: float = 0.95) -> None:
+    def __init__(self, n_agents: int = None) -> None:
         self.n_agents: int = n_agents
         self.buffer: List[Dict[str, Tensor]] = []
-        self.gamma: float = gamma
-        self.lam: float = lam
         self.episodes: List = []
         self.current_episode: Dict[str, List] = {}
         self.n_episodes: int = 0
@@ -39,6 +37,7 @@ class MultiAgentRolloutBuffer:
             'dones': [[] for _ in range(self.n_agents)],
             'gaes': [[] for _ in range(self.n_agents)],
             'episode_length': 0,
+            'average_episode_reward': 0.0
         }
 
 
@@ -53,14 +52,16 @@ class MultiAgentRolloutBuffer:
             self.current_episode['rewards'][agent_handle].append(rewards[agent_handle])
             self.current_episode['next_states'][agent_handle].append(next_states[agent_handle])
             self.current_episode['dones'][agent_handle].append(dones[agent_handle])
-
-        if all(dones[agent_handle] for agent_handle in self.agent_handles):
-            self._end_episode()
+        self.total_steps += 1
 
 
     def end_episode(self) -> None:
+        agent_rewards = []
         for agent in self.agent_handles:
             self.current_episode['episode_length'] = len(self.current_episode['states'][agent])
+            agent_rewards.append(sum(self.current_episode['rewards'][agent]) / len(self.current_episode['rewards'][agent]))
+        self.current_episode['average_episode_reward'] = sum(agent_rewards) / len(agent_rewards)
+        print(f"\nEpisode {self.n_episodes + 1} - Average Reward: {self.current_episode['average_episode_reward']}\n")
         self.episodes.append(self.current_episode)
         self.total_steps += self.current_episode['episode_length']
         self.current_episode = {
@@ -74,6 +75,7 @@ class MultiAgentRolloutBuffer:
             'dones': [[] for _ in range(self.n_agents)],
             'gaes': [[] for _ in range(self.n_agents)],
             'episode_length': 0,
+            'average_episode_reward': 0.0
         }
         self.n_episodes += 1
 
@@ -82,6 +84,7 @@ class MultiAgentRolloutBuffer:
         Flatten over all episodes agents and return a tensor for each transition value.
         """
         states = []
+        next_states = []
         actions = []
         log_probs = []
         rewards = []
@@ -91,19 +94,21 @@ class MultiAgentRolloutBuffer:
         gaes = []
         for episode in self.episodes:
             for agent_handle in self.agent_handles:
-                states.extend(self.episodes[episode]['states'][agent_handle])
-                state_values.extend(self.episodes[episode]['state_values'][agent_handle])
-                next_state_values.extend(self.episodes[episode]['next_state_values'][agent_handle])
-                actions.extend(self.episodes[episode]['actions'][agent_handle])
-                log_probs.extend(self.episodes[episode]['log_probs'][agent_handle])
-                rewards.extend(self.episodes[episode]['rewards'][agent_handle])
-                dones.extend(self.episodes[episode]['dones'][agent_handle])
-                gaes.extend(self.episodes[episode]['gaes'][agent_handle])
+                states.extend(episode['states'][agent_handle])
+                next_states.extend(episode['next_states'][agent_handle])
+                state_values.extend(episode['state_values'][agent_handle])
+                next_state_values.extend(episode['next_state_values'][agent_handle])
+                actions.extend(episode['actions'][agent_handle])
+                log_probs.extend(episode['log_probs'][agent_handle])
+                rewards.extend(episode['rewards'][agent_handle])
+                dones.extend(episode['dones'][agent_handle])
+                gaes.extend(episode['gaes'][agent_handle])
 
         if shuffle:
             indices = torch.randperm(len(states))
             states = [states[i] for i in indices]
-            state_values = [state_values[i] for i in indices]
+            next_states = [next_states[i] for i in indices]
+            state_values = [state_values[int(i)] for i in indices]
             next_state_values = [next_state_values[i] for i in indices]
             actions = [actions[i] for i in indices]
             log_probs = [log_probs[i] for i in indices]
@@ -112,14 +117,15 @@ class MultiAgentRolloutBuffer:
             dones = [dones[i] for i in indices]
 
         return {
-            'states': torch.stack(states),
-            'state_values': torch.stack(state_values),
-            'next_state_values': torch.stack(next_state_values),
-            'actions': torch.stack(actions),
-            'log_probs': torch.stack(log_probs),
-            'rewards': torch.stack(rewards),
-            'dones': torch.stack(dones),
-            'gaes': torch.stack(self.current_episode['gaes'])
+            'states': torch.stack(states).clone().detach(),
+            'next_states': torch.stack(next_states).clone().detach(),
+            'state_values': torch.stack(state_values).clone().detach(),
+            'next_state_values': torch.stack(next_state_values).clone().detach(),
+            'actions': torch.stack(actions).clone().detach(),
+            'log_probs': torch.stack(log_probs).clone().detach(),
+            'rewards': torch.tensor(rewards).clone().detach(),
+            'dones': torch.tensor(dones, dtype=torch.float32).clone().detach(),
+            'gaes': torch.stack(gaes).clone().detach()
         }
     
     
