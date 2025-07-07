@@ -78,7 +78,7 @@ def _split_subtree_into_feature_groups(node: Node, current_tree_depth: int, max_
     return data, distance, agent_data
 
 
-def split_tree_into_feature_groups(tree: Node, max_tree_depth: int):
+def _split_tree_into_feature_groups(tree: Node, max_tree_depth: int):
     data, distance, agent_data = _split_node_into_feature_groups(tree)
 
     for direction in TreeObsForRailEnv.tree_explored_actions_char:
@@ -122,7 +122,7 @@ def norm_obs_clip(observation, clip_min=-1, clip_max=1, fixed_radius=0, normalis
 
 def normalise_tree_observation(observation, tree_depth: int, observation_radius=0):
     # extract feature data
-    data, distance, agent_data = split_tree_into_feature_groups(observation, tree_depth)
+    data, distance, agent_data = _split_tree_into_feature_groups(observation, tree_depth)
 
     data = norm_obs_clip(data, fixed_radius=observation_radius)
     distance = norm_obs_clip(distance, normalise_to_range=True)
