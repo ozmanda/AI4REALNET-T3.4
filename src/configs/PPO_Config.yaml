@@ -6,10 +6,18 @@ seed: 42
 n_workers: 2
 max_optimisation_steps: 1000
 
+# Learner Config
+learner_config: 
+    max_steps: 1000
+    max_steps_per_episode: 200
+    epochs_per_rollout: 4
+    batch_size: 32
+    IS: false
+    
 
 # Controller Config
 controller_config: 
-    action_size: 4
+    action_size: 5
     neighbour_depth: 2
     optimiser_config:
       type: "adam"
