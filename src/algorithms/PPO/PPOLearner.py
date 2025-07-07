@@ -73,7 +73,7 @@ class PPOLearner():
             return
 
         combined_rollout = PPORollout.combine_rollouts(rollouts)
-        states, actions, log_probs, rewards, next_states, dones, neighbour_states, steps = combined_rollout.unzip_transitions()
+        states, actions, log_probs, rewards, next_states, dones, neighbour_states, steps = combined_rollout.unzip_ppo_transitions()
         gae = combined_rollout.gae.to(self.device)
 
         for _ in range(self.epochs_update): 

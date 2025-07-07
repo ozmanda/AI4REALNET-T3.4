@@ -4,6 +4,7 @@ from collections import namedtuple
 from itertools import chain
 
 PPOTransition = namedtuple('PPOTransition', ('state', 'action', 'log_prob', 'reward', 'next_state', 'done', 'neighbour_states'))
+Transition = namedtuple('Transition', ('state', 'action', 'log_prob', 'reward', 'next_state', 'done', 'info'))
 
 class PPORollout():
     """ Rollout class for the PPO algorithm. Gathers experience tuples with which the learner then updates the policy. """
@@ -18,7 +19,7 @@ class PPORollout():
         self.transitions.append(transition)
 
     
-    def unzip_transitions(self, device=torch.device('cpu')) -> Tuple:
+    def unzip_ppo_transitions(self, device=torch.device('cpu')) -> Tuple:
         """ Unzip the transitions into separate tensors. """
         batch = PPOTransition(*zip(*self.transitions))
         state = torch.stack(batch.state).to(device)
