@@ -39,7 +39,7 @@ class PPOWorker():
         for handle, rollout in rollout_dict.items(): #TODO: check that this actually edits the content of the dict
             if rollout.is_empty():
                 continue
-            state, action, log_prob, reward, next_state, done, neighbours_states, actual_len = rollout.unzip_transitions(device=self.controller.device) 
+            state, action, log_prob, reward, next_state, done, neighbours_states, actual_len = rollout.unzip_ppo_transitions(device=self.controller.device) 
             rollout.gae = self._generalised_advantage_estimator(state, next_state, reward, done, neighbours_states, actual_len)
             info['shaped_reward'] += reward.sum().item()
         
