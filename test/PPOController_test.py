@@ -41,7 +41,7 @@ class PPOController_Test(unittest.TestCase):
                 'n_nodes': n_nodes
             },
             'critic_config': {
-                'critic_layer_sizes': [128, 64],
+                'layer_sizes': [128, 64],
                 'n_nodes': n_nodes
             }
         }
@@ -49,13 +49,26 @@ class PPOController_Test(unittest.TestCase):
     
 
     def setup_small_env(self) -> Tuple[RailEnv, int]:
-        # create flatland env with default settings for testing
-        envconfig = FlatlandEnvConfig(observation_builder_config={'max_depth': 3,
-                                                                  'type': 'tree',
-                                                                  'predictor': 'shortest_path'},
-                                      malfunction_config={'malfunction_rate': 0.0,
-                                                          'min_duration': 0.0, 
-                                                          'max_duration': 0.0})
+        env_config = {
+            'height': 30,
+            'width': 30,
+            'n_agents': 8,
+            'n_cities': 4,
+            'grid_distribution': False,
+            'max_rails_between_cities': 2,
+            'max_rail_pairs_in_city': 2,
+            'observation_builder_config': {'type': 'tree',
+                                           'predictor': 'shortest_path',
+                                           'max_depth': 3},
+            'malfunction_config': {'malfunction_rate': 0.001,
+                                   'min_duration': 20,
+                                   'max_duration': 50},
+            'speed_ratios': {1.0: 0.7,
+                             0.5: 0.3},
+            'reward_config': 0,
+            'random_seed': 42
+            }
+        envconfig = FlatlandEnvConfig(env_config)
         max_depth = envconfig.observation_builder_config['max_depth']
         return envconfig.create_env(), max_depth
 
