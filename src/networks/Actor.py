@@ -58,7 +58,9 @@ class Actor(nn.Module):
         """
         # resize to 
 
-        query: Tensor = self.policy_hidden_layer(encoded_states).unsqueeze(1)
+        query: Tensor = self.policy_hidden_layer(encoded_states)
+        if query.dim() == 2:  
+            query = query.unsqueeze(1)
         # key: Tensor = self._add_direction(agent_signals) #! removed direction information
         key = agent_signals.view(agent_signals.size(0), agent_signals.size(1), -1)
         attended_signals: Tensor = self.intent_attention(query=query, key=key, value=key)
