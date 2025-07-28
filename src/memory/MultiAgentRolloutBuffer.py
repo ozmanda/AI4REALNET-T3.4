@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from torch import Tensor
 from typing import List, Dict, Union
 from src.algorithms.PPO.PPORollout import Transition
@@ -13,7 +14,7 @@ class MultiAgentRolloutBuffer:
     def __init__(self, n_agents: int = None) -> None:
         self.n_agents: int = n_agents
         self.buffer: List[Dict[str, Tensor]] = []
-        self.episodes: List = []
+        self.episodes: List[Dict] = []
         self.current_episode: Dict[str, List] = {}
         self.n_episodes: int = 0
         self.total_steps: int = 0
@@ -26,6 +27,9 @@ class MultiAgentRolloutBuffer:
         self.agent_handles = agent_handles
         self.n_agents = len(agent_handles)
         self.episodes: List = []
+        self._reset_current_episode()
+
+    def _reset_current_episode(self) -> None:
         self.current_episode: Dict[str, List] = {
             'states': [[] for _ in range(self.n_agents)],
             'state_values': [[] for _ in range(self.n_agents)],
@@ -36,7 +40,8 @@ class MultiAgentRolloutBuffer:
             'next_state_values': [[] for _ in range(self.n_agents)],
             'dones': [[] for _ in range(self.n_agents)],
             'gaes': [[] for _ in range(self.n_agents)],
-            'episode_length': 0,
+            'episode_length': [0 for _ in range(self.n_agents)],
+            'average_episode_length': 0,
             'average_episode_reward': 0.0
         }
 
@@ -56,27 +61,20 @@ class MultiAgentRolloutBuffer:
 
 
     def end_episode(self) -> None:
-        agent_rewards = []
+        agent_episode_rewards = []
+        total_episode_length = 0
         for agent in self.agent_handles:
-            self.current_episode['episode_length'] = len(self.current_episode['states'][agent])
-            agent_rewards.append(sum(self.current_episode['rewards'][agent]) / len(self.current_episode['rewards'][agent]))
-        self.current_episode['average_episode_reward'] = sum(agent_rewards) / len(agent_rewards)
+            self.current_episode['episode_length'][agent] += len(self.current_episode['states'][agent])
+            agent_episode_rewards.append(sum(self.current_episode['rewards'][agent]) / len(self.current_episode['rewards'][agent]))
+
+        self.current_episode['average_episode_length'] = np.sum(self.current_episode['episode_length']) / self.n_agents
+        self.current_episode['average_episode_reward'] = sum(agent_episode_rewards) / self.n_agents
+
         print(f"\nEpisode {self.n_episodes + 1} - Average Reward: {self.current_episode['average_episode_reward']}\n")
+
         self.episodes.append(self.current_episode)
-        self.total_steps += self.current_episode['episode_length']
-        self.current_episode = {
-            'states': [[] for _ in range(self.n_agents)],
-            'state_values': [[] for _ in range(self.n_agents)],
-            'actions': [[] for _ in range(self.n_agents)],
-            'log_probs': [[] for _ in range(self.n_agents)],
-            'rewards': [[] for _ in range(self.n_agents)],
-            'next_states': [[] for _ in range(self.n_agents)],
-            'next_state_values': [[] for _ in range(self.n_agents)],
-            'dones': [[] for _ in range(self.n_agents)],
-            'gaes': [[] for _ in range(self.n_agents)],
-            'episode_length': 0,
-            'average_episode_reward': 0.0
-        }
+        self.total_steps += self.current_episode['average_episode_length']
+        self._reset_current_episode()
         self.n_episodes += 1
 
     def get_transitions(self, shuffle: bool) -> Dict[str, Tensor]:
