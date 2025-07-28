@@ -15,7 +15,7 @@ from src.networks.FeedForwardNN import FeedForwardNN
 
 from src.training.loss import value_loss, value_loss_with_IS, policy_loss
 
-class PPOAgent():
+class PPOController():
     def __init__(self, config: Dict, agent_ID: Union[int, str] = None):
         self.config: Dict = config
         if agent_ID:
