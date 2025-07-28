@@ -1,3 +1,4 @@
+import wandb
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -24,6 +25,7 @@ class PPOAgent():
         self.actor: nn.Module = self._build_actor()
         self.critic: nn.Module = self._build_critic()
         self.optimizer: optim.Optimizer = self._build_optimizer(config['optimiser_config'])
+        self.update_step: int = 0
 
     def _init_hyperparameters(self, config: Dict) -> None:
         """
@@ -43,13 +45,14 @@ class PPOAgent():
         self.actor_network = FeedForwardNN(self.state_size, self.config['actor_config']['hidden_size'], self.action_size)
 
     def _build_critic(self) -> nn.Module:
-        self.critic_network = FeedForwardNN(self.state_size, self.config['actor_config']['hidden_size'], 1) # TODO: add hidden size to critic config
+        self.critic_network = FeedForwardNN(self.state_size, self.config['critic_config']['hidden_size'], 1) # TODO: add hidden size to critic config
 
     def _build_optimizer(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
         if optimiser_config['type'] == 'adam': 
             self.optimiser = optim.Adam(params=chain(self.actor_network.parameters(), self.critic_network.parameters()), lr=float(optimiser_config['learning_rate']))
         else: 
             raise Warning('Only Adam optimiser has been implemented')
+
 
     def update_networks(self, rollout: MultiAgentRolloutBuffer, epochs: int, batch_size: int, IS: bool = False) -> None:
         """
@@ -59,7 +62,12 @@ class PPOAgent():
         4. update the actor and critic networks
         """
         rollout = self._generalised_advantage_estimation(rollout)
-        for minibatch in rollout.get_minibatches(batch_size=batch_size, shuffle=True):
+        losses = {
+            'policy_loss': [],
+            'value_loss': []
+        }
+
+        for minibatch in rollout.get_minibatches(batch_size=batch_size, shuffle=False):
             # forward pass through the actor network to get actions and log probabilities
             new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(minibatch['states'], minibatch['next_states'], minibatch['actions'])
             new_state_values = new_state_values.squeeze(-1)  
@@ -97,6 +105,18 @@ class PPOAgent():
             self.optimiser.zero_grad()
             total_loss.backward()
             self.optimiser.step()
+            self.update_step += 1
+
+            # add metrics
+            losses['policy_loss'].append(actor_loss.mean().item())
+            losses['value_loss'].append(critic_loss.mean().item())
+            wandb.log({
+                'update_step': self.update_step,
+                'train/policy_loss': np.mean(losses['policy_loss']),
+                'train/value_loss': np.mean(losses['value_loss'])
+            })
+
+        return losses
 
 
     def state_values(self, states: Tensor, next_states: Tensor) -> Tensor:
@@ -193,7 +213,7 @@ class PPOAgent():
         return discounted_rewards
     
 
-    def _evaluate(self, states: Tensor, next_states: Tensor, actions: Tensor) -> Tuple:
+    def _evaluate(self, states: Tensor, next_states: Tensor, actions: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         """ 
         Forward pass through the actor network to get the action distribution and log probabilities, to compute the entropy of the policy distribution and the current state values.
         """
