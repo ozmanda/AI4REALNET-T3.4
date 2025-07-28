@@ -4,6 +4,8 @@ import argparse
 from torch import Tensor
 from typing import List, Dict, Union
 
+import wandb
+
 from src.utils.file_utils import load_config_file
 from src.utils.obs_utils import calculate_state_size, obs_dict_to_tensor
 from src.configs.EnvConfig import FlatlandEnvConfig
@@ -22,8 +24,11 @@ class Learner():
     Learner class for the PPO Controller.
     """
     def __init__(self, env: RailEnv, controller: PPOAgent, learner_config: Dict, env_config: Dict) -> None:
+        self._init_wandb(learner_config)
         self.env = env
         self.controller: PPOAgent = controller
+        wandb.watch(self.controller.actor_network, log='all')
+        wandb.watch(self.controller.critic_network, log='all')
         self.max_steps: int = learner_config['max_steps']
         self.max_steps_per_episode: int = learner_config['max_steps_per_episode']
         self.total_steps: int = 0
@@ -33,26 +38,51 @@ class Learner():
         self.state_size: int = controller.config['state_size']
         self.obs_type: str = env_config['observation_builder_config']['type']
         self.max_depth: int = env_config['observation_builder_config']['max_depth']
-        self.epochs: int = learner_config['epochs_per_rollout']
+        self.iterations: int = learner_config['training_iterations']
         self.batch_size: int = learner_config['batch_size']
         self.episodes_infos: List[Dict] = []
+        self.total_episodes: int = 0
 
+    def _init_wandb(self, learner_config: Dict) -> None:
+        """
+        Initialize Weights & Biases for logging.
+        """
+        wandb.init(project='AI4REALNET-T3.4', entity='CLS-FHNW', config=learner_config, reinit=True)
+        wandb.run.define_metric('episodes/*', step_metric='episode')
+        wandb.run.define_metric('train/*', step_metric='update_step')
+        wandb.run.name = learner_config['run_name']
+        wandb.run.save()
 
     def run(self) -> Dict:
         n_episodes = 0
-        metrics: Dict = {}
+        metrics: Dict[List] = {
+            'rewards': [],
+            'policy_loss': [],
+            'value_loss': []
+        }
+
         self.total_steps = 0
-        for epoch in range(self.epochs):
-            print(f'\nEpoch {epoch + 1}/{self.epochs}')
+        for epoch in range(self.iterations):
+            print(f'\nEpoch {epoch + 1}/{self.iterations}')
             while self.total_steps < self.max_steps:
                 rollout = self.gather_rollout()
                 self._calculate_metrics(rollout)
                 n_episodes += len(rollout.episodes)
-                self.controller.update_networks(rollout, self.epochs, self.batch_size, IS=self.learner_config['IS'])
+                losses = self.controller.update_networks(rollout, self.iterations, self.batch_size, IS=self.learner_config['IS'])
                 self.total_steps += rollout.total_steps
-                average_episode_reward = sum(episode['average_episode_reward'] for episode in rollout.episodes) / len(rollout.episodes)
+
+
+                episode_rewards = [episode['average_episode_reward'] for episode in rollout.episodes]
+                average_episode_reward = sum(episode_rewards) / len(episode_rewards)
                 print(f'\nTotal Steps: {self.total_steps}, Total Episodes: {n_episodes}, Average Episode Reward: {average_episode_reward}')
+                
+                # metric information
+                metrics['policy_loss'].extend(losses['policy_loss'])
+                metrics['value_loss'].extend(losses['value_loss'])
+                metrics['rewards'].extend(episode_rewards)
+
             self.total_steps = 0
+
 
         return metrics
     
@@ -104,6 +134,13 @@ class Learner():
                                                            max_depth=self.max_depth, 
                                                            n_nodes=self.n_nodes)
                 episode_step = 0
+                self.total_episodes += 1
+
+                wandb.log({
+                    'episode': self.total_episodes,
+                    'episode/reward': rollout.episodes[-1]['average_episode_reward'],
+                    'episode/average_length': rollout.episodes[-1]['average_episode_length'],
+                })
 
         return rollout
     
