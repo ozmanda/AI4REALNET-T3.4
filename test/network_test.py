@@ -89,8 +89,7 @@ class NetworkTest(unittest.TestCase):
         self.network_test(network, args.batchsize)
 
 
-    def network_test(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int):
-        
+    def test_network(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int):
         self.forward_pass_test(network, batchsize)
         self.error_handling_test(network, batchsize)
 
@@ -102,7 +101,7 @@ class NetworkTest(unittest.TestCase):
             self.agent_mask_test(network, batchsize)
         
     
-    def init_test(self, network: Union[CommNet, LSTM, RNN], batchsize: int):
+    def test_init(self, network: Union[CommNet, LSTM, RNN], batchsize: int):
         output = network.init_hidden(batchsize)
         if isinstance(network, RNN): 
             self.assertEqual(output.size(), (batchsize * network.n_agents, network.hid_size))
@@ -111,7 +110,7 @@ class NetworkTest(unittest.TestCase):
             self.assertEqual(output[1].size(), output[0].size())
 
 
-    def agent_mask_test(self, network: CommNet, batchsize): 
+    def test_agent_mask(self, network: CommNet, batchsize): 
         info = {'comm_action': torch.randn(batchsize, network.n_agents, network.n_agents), 'alive_mask': torch.zeros(batchsize, network.n_agents)}
         num_agents_alive, agent_mask = network._get_agent_mask(batchsize, info)
         self.assertTrue(torch.equal(num_agents_alive, torch.zeros(batchsize)))
@@ -122,7 +121,7 @@ class NetworkTest(unittest.TestCase):
         self.assertTrue(torch.equal(num_agents_alive, torch.full(batchsize, network.n_agents)))
 
 
-    def error_handling_test(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int): 
+    def test_error_handling(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int): 
         correct_state = torch.randn(batchsize, network.n_agents, network.n_features)
         hidden_state = torch.randn(batchsize, network.n_agents, network.hid_size)
         incorrect_tensor = torch.randn(batchsize, network.n_agents, network.n_features, 4)
@@ -143,7 +142,7 @@ class NetworkTest(unittest.TestCase):
                 network(incorrect_tensor)
 
 
-    def forward_pass_test(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int):
+    def test_forward_pass(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int):
         correct_state = torch.randn(batchsize, network.n_agents, network.n_features)
         hidden_state = torch.randn(batchsize, network.n_agents, network.hid_size)
 
@@ -170,7 +169,7 @@ class NetworkTest(unittest.TestCase):
         self.assertEqual(value.size(), (batchsize, network.n_agents, 1))
 
 
-    def forward_target_test(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int): 
+    def test_forward_target(self, network: Union[CommNet, LSTM, RNN, MLP], batchsize: int): 
         correct_state = torch.randn(batchsize, network.n_agents, network.n_features)
         hidden_state = torch.randn(batchsize, network.n_agents, network.hid_size)
 
