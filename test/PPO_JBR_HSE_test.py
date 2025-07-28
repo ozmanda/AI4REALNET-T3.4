@@ -5,8 +5,8 @@ from argparse import Namespace
 import torch
 from torch import Tensor
 import numpy as np
-from src.algorithms.PPO.PPOController import PPOController
-from src.algorithms.PPO.PPORunner import PPORunner
+from src.algorithms.PPO_JBR_HSE.PPOController import PPOController
+from src.algorithms.PPO_JBR_HSE.PPORunner import PPORunner
 from src.configs.ControllerConfigs import PPOControllerConfig
 from flatland.envs.rail_env import RailEnv
 from src.utils.file_utils import load_config_file

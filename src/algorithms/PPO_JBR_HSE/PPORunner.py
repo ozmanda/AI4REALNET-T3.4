@@ -4,8 +4,8 @@ from collections import defaultdict
 from typing import Dict, Tuple, List, DefaultDict, Union
 
 from src.utils.obs_utils import tree_observation_dict
-from src.algorithms.PPO.PPOController import PPOController
-from src.algorithms.PPO.PPORollout import PPORollout, PPOTransition
+from src.algorithms.PPO_JBR_HSE.PPOController import PPOController
+from src.algorithms.PPO_JBR_HSE.PPORollout import PPORollout, PPOTransition
 
 from src.configs.EnvConfig import FlatlandEnvConfig
 from flatland.envs.rail_env import RailEnv

@@ -9,9 +9,9 @@ from src.utils.tensor_utils import _permute_tensors
 from src.utils.obs_utils import calculate_state_size
 from src.training.loss import value_loss, value_loss_with_IS, policy_loss
 
-from src.algorithms.PPO.PPOController import PPOController
-from src.algorithms.PPO.PPORollout import PPORollout
-from src.algorithms.PPO.PPORunner import PPORunner
+from src.algorithms.PPO_JBR_HSE.PPOController import PPOController
+from src.algorithms.PPO_JBR_HSE.PPORollout import PPORollout
+from src.algorithms.PPO_JBR_HSE.PPORunner import PPORunner
 
 from src.configs.ControllerConfigs import PPOControllerConfig
 from src.configs.EnvConfig import FlatlandEnvConfig

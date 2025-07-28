@@ -3,7 +3,7 @@ import torch
 from torch import Tensor
 from typing import Dict, Tuple, Union
 
-from src.algorithms.PPO.PPORunner import PPORunner
+from src.algorithms.PPO_JBR_HSE.PPORunner import PPORunner
 from src.configs.EnvConfig import FlatlandEnvConfig
 
 @ray.remote
