@@ -2,3 +2,4 @@
 **/__pycache__/
 src/models/test/
 wandb/
+**.png
