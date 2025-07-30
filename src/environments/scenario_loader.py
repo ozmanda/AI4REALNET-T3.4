@@ -31,9 +31,8 @@ def timetable_generator_from_timetable(timetable):
     return timetable_generator
 
 
-def load_scenario_from_json(scenario_name):
-    dir = os.path.join(os.getcwd(), 'src', 'utils', 'environments', f'{scenario_name}.json')
-    with open(dir, 'r') as f:
+def load_scenario_from_json(scenario_path: str) -> RailEnv:
+    with open(scenario_path, 'r') as f:
         data = json.load(f)
 
     width = data['gridDimensions']['cols']
