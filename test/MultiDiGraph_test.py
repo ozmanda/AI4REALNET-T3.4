@@ -1,5 +1,5 @@
 import unittest
-from typing import List
+from typing import List, Dict, Tuple
 
 from src.utils.flatland_railway_extension.MultiDiGraphBuilder import MultiDiGraphBuilder
 from src.environments.scenario_loader import load_scenario_from_json
@@ -14,45 +14,61 @@ scenarios: List[str] = ['simple_avoidance',
                         'overtaking', 
                         'complex_ordering']
 
-complex_graph_test: str = 'graph_test'
+complex_graph_test: str = 'graph_test_connected'
 
-class TestMultiDiGraphBuilder(unittest.TestCase):
+class TestMultiDiGraphBuilder_Complex(unittest.TestCase):
     def setUp(self): 
-        self.env = small_flatland_env()
+        scenario_dir = os.path.join(os.getcwd(), 'src', 'environments', f'{complex_graph_test}.json')
+        self.env = load_scenario_from_json(scenario_dir)
+        self.env.reset()
+
+        self.graph_results: Dict[Tuple[int, int], int] = {
+            (0,10): 1,
+            (1,10): 3,
+            (2, 9): 3,
+            (3, 9): 3,
+            (2, 5): 3,
+            (3, 5): 4,
+            (4, 6): 1,
+            (5, 5): 4,
+            (4, 8): 3,
+            (3, 9): 3,
+            (2,11): 3,
+            (3,11): 3,
+            (2,15): 3,
+            (3,15): 4,
+            (4,14): 1,
+            (5,15): 4,
+            (4,12): 3,
+        }
+        self.n_edges = sum(self.graph_results.values())
+        self.n_nodes = len(self.graph_results)
+
+        self.graph = MultiDiGraphBuilder(self.env)
 
     def test_graph_generation(self):
         """ Test the graph generation for one scenario. """
         self.env.reset()
-        graph_builder = MultiDiGraphBuilder(self.env)
-        self.assertIsNotNone(graph_builder.graph, "Graph should be generated successfully.")
-        self.assertGreater(len(graph_builder.graph.nodes), 0, "Graph should contain nodes.")
-        self.assertGreater(len(graph_builder.graph.edges), 0, "Graph should contain edges.")
+        self.assertIsNotNone(self.graph.graph, "Graph should be generated successfully.")
+        self.assertGreater(len(self.graph.graph.nodes), 0, "Graph should contain nodes.")
+        self.assertGreater(len(self.graph.graph.edges), 0, "Graph should contain edges.")
 
-    def test_graph_generation_for_scenarios(self):
-        """ Test the graph generation for multiple scenarios. """
-        for scenario in scenarios:
-            with self.subTest(scenario=scenario):
-                env = load_scenario_from_json(scenario)
-                env.reset()
-                graph_builder = MultiDiGraphBuilder(env)
-                self.assertIsNotNone(graph_builder.graph, f"Graph for {scenario} should be generated successfully.")
-                self.assertGreater(len(graph_builder.graph.nodes), 0, f"Graph for {scenario} should contain nodes.")
-                self.assertGreater(len(graph_builder.graph.edges), 0, f"Graph for {scenario} should contain edges.")
+    def test_node_generation(self):
+        """ Test the node generation in the graph. """
+        self.assertEqual(len(self.graph.graph.nodes), self.n_nodes, "Graph should contain nodes.")
+        for node in self.graph_results.keys():
+            self.assertIn(node, self.graph.graph.nodes, f"Node {node} should be present in the graph.")
 
-    def test_complex_graph_generation(self):
+    def test_edge_generation(self):
+        """ Test the edge generation in the graph. """
+        self.assertEqual(len(self.graph.graph.edges), self.n_edges, "Graph should contain edges.")
+        for edge in self.graph_results.keys():
+            self.assertEqual(len(self.graph.graph.edges(edge)), self.graph_results[edge],
+                             f"Edge {edge} should have {self.graph_results[edge]} connections.")
+
+    def test_graph_render(self):
         """ Test the graph generation for a complex scenario. """
-        env = load_scenario_from_json(complex_graph_test)
-        env.reset()
-        img = env.render()
-        plt.title(f"GraphBuilder Test Scenario 1")
-        plt.imshow(img)
-        plt.axis('off')
-        plt.savefig(os.path.join("test", "renders", f"graphbuilder_test_scenario.png"), bbox_inches='tight')
-        plt.close()
-        graph_builder = MultiDiGraphBuilder(env)
-        self.assertIsNotNone(graph_builder.graph, "Complex graph should be generated successfully.")
-        self.assertGreater(len(graph_builder.graph.nodes), 0, "Complex graph should contain nodes.")
-        self.assertGreater(len(graph_builder.graph.edges), 0, "Complex graph should contain edges.")
-        graph_builder.render()
+        self.graph.render(os.path.join("test", "renders", f"graphbuilder_test_scenario_graph.png"))
+
 
     
