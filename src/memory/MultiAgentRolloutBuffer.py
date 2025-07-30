@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from torch import Tensor
 from typing import List, Dict, Union
-from src.algorithms.PPO.PPORollout import Transition
+from src.algorithms.PPO_JBR_HSE.PPORollout import Transition
 
 
 
