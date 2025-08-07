@@ -33,6 +33,7 @@ class MultiDiGraphBuilder:
         self._init_parameters()
         self._init_switch_clustering()
         self._generate_graph()
+        self._rail_ID_mapping()
 
     def _init_parameters(self):
         self.height: int = self.env.height
@@ -42,6 +43,7 @@ class MultiDiGraphBuilder:
 
         self.nodes: Dict[str, Tuple[int, int]] = {}
         self.edges: Dict[str, Tuple[Tuple[int, int], Tuple[int, int]]] = {}
+        self.rail_ID_mapping: Dict[int, List[Tuple[int, int], Tuple[int, int]]] = {}
 
     def _init_switch_clustering(self):
         """Initialize the switch and rail clustering. """
@@ -80,7 +82,6 @@ class MultiDiGraphBuilder:
     def _node_splitter(self, node: Tuple[int, int], travel_direction: int) -> None:
         """ Splits the nodes, following the valid transitions. """
         # rotate the out_direction of the previous cell by 180° to be the incoming direction in the current cell
-        in_direction: int = self._reverse_direction(travel_direction)
         self._current_depth += 1
         if self._current_depth > self.max_depth:
             raise ValueError("Maximum depth exceeded while traversing the graph.")
@@ -91,6 +92,7 @@ class MultiDiGraphBuilder:
             # if travel_direction == in_direction: # prevents going back to the previous node
                 # continue
             next_node, travel_directions, rail_ID, resources, dead_end = self._find_next_node(node, travel_direction)
+            # TODO: clean up attribute definition
             edge_attr: Dict[str, Any] = {
                 'rail_ID': rail_ID,
                 'out_direction': travel_directions[0],
@@ -249,6 +251,16 @@ class MultiDiGraphBuilder:
     def _reverse_direction(self, direction: int) -> int:
         """Reverse the direction."""
         return (direction + (n_directions // 2)) % n_directions
+    
+
+    def _rail_ID_mapping(self):
+        """ Create a mapping of rail IDs to the edges in the graph. """
+        for u, v, data in self.graph.edges(data=True):
+            rail_ID = data['attr']['rail_ID']
+            if rail_ID is not None:
+                if rail_ID not in self.rail_ID_mapping.keys():
+                    self.rail_ID_mapping[rail_ID] = []
+                self.rail_ID_mapping[rail_ID].append((u, v))
 
 
 if __name__ == "__main__":
