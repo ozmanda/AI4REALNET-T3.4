@@ -1,6 +1,5 @@
 ---
 # run info
-run_name: "ppo"
 n_episodes: 50
 seed: 42
 n_workers: 2
@@ -8,11 +7,13 @@ max_optimisation_steps: 1000
 
 # Learner Config
 learner_config: 
-    max_steps: 1000
+    run_name: "ppo_test"
+    max_steps: 10000
     max_steps_per_episode: 200
-    epochs_per_rollout: 4
+    training_iterations: 4
     batch_size: 32
     IS: false
+    log_interval: 10
     
 
 # Controller Config
@@ -33,6 +34,7 @@ controller_config:
     tau: 0.99
     n_features: 12
     actor_config:
+      type: "FNN"
       n_heads: 5
       hidden_size: 128
       intent_size: 32
@@ -41,6 +43,8 @@ controller_config:
       - 256
       - 128
     critic_config:
+      type: "FNN"
+      hidden_size: 128
       layer_sizes: 
       - 256
       - 128
