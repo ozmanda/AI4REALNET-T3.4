@@ -1,41 +1,59 @@
 import os
 import sys
-import argparse
-from torch import Tensor
-from typing import List, Dict, Union
-
 import wandb
+import argparse
+import numpy as np
+from itertools import chain
+from typing import List, Dict, Union, Tuple
 
-from src.utils.obs_utils import calculate_state_size, obs_dict_to_tensor
+import torch
+from torch import Tensor
+import torch.optim as optim
+import torch.multiprocessing as mp
 
+from src.algorithms.PPO.PPOWorker import PPOWorker
 from src.algorithms.PPO.PPOController import PPOController
 from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
+from src.training.loss import value_loss, value_loss_with_IS, policy_loss
 
 from flatland.envs.rail_env import RailEnv
+from src.configs.EnvConfig import FlatlandEnvConfig
 
-class Learner():
+class PPOLearner():
     """
     Learner class for the PPO Controller.
     """
-    def __init__(self, env: RailEnv, controller: PPOController, learner_config: Dict, env_config: Dict) -> None:
-        self._init_wandb(learner_config)
-        self.env = env
+    def __init__(self, controller: PPOController, learner_config: Dict, env_config: Dict) -> None:
+        # Initialise environment and controller
+        self.env_config = env_config
         self.controller: PPOController = controller
-        wandb.watch(self.controller.actor_network, log='all')
-        wandb.watch(self.controller.critic_network, log='all')
+        self.n_nodes: int = controller.config['n_nodes']
+        self.state_size: int = controller.config['state_size']
+        self.entropy_coeff: float = controller.config['entropy_coefficient']
+        self.value_loss_coeff: float = controller.config['value_loss_coefficient']
+        self.gamma: float = controller.config['gamma'] # TODO: ensure gamma is in learner_config
+
+        # Learning parameters
         self.max_steps: int = learner_config['max_steps']
         self.max_steps_per_episode: int = learner_config['max_steps_per_episode']
         self.total_steps: int = 0
-        self.env_config: dict = env_config
-        self.learner_config: Dict = learner_config
-        self.n_nodes: int = controller.config['n_nodes']
-        self.state_size: int = controller.config['state_size']
-        self.obs_type: str = env_config['observation_builder_config']['type']
-        self.max_depth: int = env_config['observation_builder_config']['max_depth']
         self.iterations: int = learner_config['training_iterations']
         self.batch_size: int = learner_config['batch_size']
+        self.importance_sampling: bool = learner_config['importance_sampling'] # TODO: add importance sampling to config
         self.episodes_infos: List[Dict] = []
         self.total_episodes: int = 0
+
+        # Parallelisation Configuration
+        self.n_workers: int = learner_config['n_workers'] # TODO: add n_workers to learner_config
+
+        # Initialise the optimiser
+        self.optimizer: optim.Optimizer = self._build_optimizer(learner_config['optimiser_config']) # TODO: add optimiser_config to learner_config
+
+        # Initialise wandb for logging
+        self._init_wandb(learner_config)
+        wandb.watch(self.controller.actor_network, log='all')
+        wandb.watch(self.controller.critic_network, log='all')
+
 
     def _init_wandb(self, learner_config: Dict) -> None:
         """
@@ -46,6 +64,79 @@ class Learner():
         wandb.run.define_metric('train/*', step_metric='update_step')
         wandb.run.name = learner_config['run_name']
         wandb.run.save()
+
+
+    def worker_entry(self, worker_id: int, queue: mp.Queue) -> None:
+        """
+        Entry point for each worker to run the PPOWorker.
+        """
+        worker = PPOWorker(env_config=self.env_config, 
+                           controller=self.controller,
+                           max_steps=self.max_steps,
+                           device='cpu')
+        rollout = worker.run()
+        queue.put(rollout)
+    
+
+    def gather_rollout(self) -> MultiAgentRolloutBuffer:
+        """
+        Rollout function to gather experience tuples for the PPO agent.
+        
+        :return: List of transitions collected during the rollout.
+        """
+        # parallelisation of rollout gathering
+        mp.set_start_method('spawn')
+        queue: mp.Queue = mp.Queue()
+        processes: List[mp.Process] = []
+        for worker_id in range(self.n_workers):
+            process = mp.Process(target=self.worker_entry, args=(worker_id, queue))
+            processes.append(process)
+            process.start()
+
+        rollouts: List[MultiAgentRolloutBuffer] = [queue.get() for _ in range(self.n_workers)]
+
+        for process in processes:
+            process.join()
+
+        # Combine rollouts from all workers
+        combined_rollout: MultiAgentRolloutBuffer = MultiAgentRolloutBuffer.combine_rollouts(rollouts)
+
+        return combined_rollout
+
+
+    def _build_optimizer(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
+        if optimiser_config['type'] == 'adam': 
+            self.optimiser = optim.Adam(params=chain(self.controller.actor_network.parameters(), self.controller.critic_network.parameters()), lr=float(optimiser_config['learning_rate']))
+        else: 
+            raise Warning('Only Adam optimiser has been implemented')
+
+
+    def _optimise(self, rollouts: MultiAgentRolloutBuffer) -> Dict[str, List[float]]:
+        """
+        Optimise the model parameters using the collected rollouts.
+        """
+        losses = {
+            'policy_loss': [],
+            'value_loss': []
+        }
+
+        total_loss, actor_loss, critic_loss = self._loss(rollouts)
+
+        self.optimiser.zero_grad()
+        total_loss.backward()
+        self.optimiser.step()
+        self.update_step += 1
+
+        # add metrics
+        losses['policy_loss'].append(actor_loss.mean().item())
+        losses['value_loss'].append(critic_loss.mean().item())
+        wandb.log({
+            'update_step': self.update_step,
+            'train/policy_loss': np.mean(losses['policy_loss']),
+            'train/value_loss': np.mean(losses['value_loss'])
+        })
+        return losses
+
 
     def run(self) -> Dict:
         n_episodes = 0
@@ -62,7 +153,7 @@ class Learner():
                 rollout = self.gather_rollout()
                 self._calculate_metrics(rollout)
                 n_episodes += len(rollout.episodes)
-                losses = self.controller.update_networks(rollout, self.iterations, self.batch_size, IS=self.learner_config['IS'])
+                losses = self._optimise(rollout)
                 self.total_steps += rollout.total_steps
 
 
@@ -70,7 +161,8 @@ class Learner():
                 average_episode_reward = sum(episode_rewards) / len(episode_rewards)
                 print(f'\nTotal Steps: {self.total_steps}, Total Episodes: {n_episodes}, Average Episode Reward: {average_episode_reward}')
                 
-                # metric information
+                # TODO: add this to wandb
+                # metric information 
                 metrics['policy_loss'].extend(losses['policy_loss'])
                 metrics['value_loss'].extend(losses['value_loss'])
                 metrics['rewards'].extend(episode_rewards)
@@ -80,63 +172,62 @@ class Learner():
 
         return metrics
     
-
-    def gather_rollout(self) -> MultiAgentRolloutBuffer:
+    
+    def _loss(self, rollout: MultiAgentRolloutBuffer, batch_size: int) -> Tuple[Tensor, Tensor, Tensor]:
         """
-        Rollout function to gather experience tuples for the PPO agent.
+        Calculate the loss for the actor and critic networks.
+        """
         
-        :return: List of transitions collected during the rollout.
+        for minibatch in rollout.get_minibatches(batch_size=batch_size, shuffle=False):
+            # forward pass through the actor network to get actions and log probabilities
+            new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(minibatch['states'], minibatch['next_states'], minibatch['actions'])
+            new_state_values = new_state_values.squeeze(-1)  
+            new_next_state_values = new_next_state_values.squeeze(-1)
+
+            # Policy loss
+            old_log_probs = minibatch['log_probs']
+            actor_loss = policy_loss(gae=minibatch['gaes'],
+                                    new_log_prob=new_log_probs,
+                                    old_log_prob=old_log_probs,
+                                    clip_eps=self.controller.config['clip_epsilon'])
+            
+            # Value loss
+            if self.importance_sampling:
+                critic_loss = value_loss_with_IS(state_values=new_state_values,
+                                                next_state_values=new_next_state_values,
+                                                new_log_prob=new_log_probs,
+                                                old_log_prob=old_log_probs,
+                                                reward=minibatch['rewards'],
+                                                done=minibatch['dones'],
+                                                gamma=self.controller.config['gamma']
+                                                )
+            else:
+                critic_loss = value_loss(state_values=new_state_values,
+                                        next_state_values=new_next_state_values,
+                                        reward=minibatch['rewards'],
+                                        done=minibatch['dones'],
+                                        gamma=self.controller.config['gamma'])
+                
+            # Entropy bonus
+            entropy_loss = -entropy.mean()  # Encourage exploration
+
+            # TODO: value_loss_coef and entropy_coef into config
+            # Total loss & optimisation step
+            total_loss: Tensor = actor_loss + critic_loss * self.controller.config['value_loss_coefficient'] + entropy_loss * self.controller.config['entropy_coefficient']
+            return total_loss, actor_loss, critic_loss
+        
+
+    def _evaluate(self, states: Tensor, next_states: Tensor, actions: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        """ 
+        Forward pass through the actor network to get the action distribution and log probabilities, to compute the entropy of the policy distribution and the current state values.
         """
-        rollout: MultiAgentRolloutBuffer = MultiAgentRolloutBuffer(n_agents=self.env.number_of_agents)
-        rollout.reset(agent_handles=self.env.get_agent_handles())
-
-        episode_step = 0
-        current_state_dict, _ = self.env.reset()
-        n_agents = self.env.number_of_agents
-        current_state_tensor: Tensor = obs_dict_to_tensor(observation=current_state_dict, 
-                                                          obs_type=self.obs_type, 
-                                                          n_agents=n_agents,
-                                                          max_depth=self.max_depth, 
-                                                          n_nodes=self.n_nodes)
-
-        while rollout.total_steps < self.max_steps:
-            print(f'\rEpisode {rollout.n_episodes + 1} - Step {episode_step + 1}/{self.max_steps_per_episode}', end='', flush=True)
-            actions, log_probs = self.controller.sample_action(current_state_tensor)
-            actions_dict: Dict[Union[int, str], Tensor] = {}
-            for i, agent_handle in enumerate(self.env.get_agent_handles()):
-                actions_dict[agent_handle] = actions[i]
-
-            next_state, rewards, dones, infos = self.env.step(actions_dict)
-            next_state_tensor: Tensor = obs_dict_to_tensor(observation=next_state, 
-                                                           obs_type=self.obs_type, 
-                                                           n_agents=n_agents,
-                                                           max_depth=self.max_depth, 
-                                                           n_nodes=self.n_nodes)
-
-            rollout.add_transitions(states=current_state_tensor, actions=actions_dict, log_probs=log_probs, 
-                                    rewards=rewards, next_states=next_state_tensor, dones=dones)
-
-            current_state_tensor = next_state_tensor
-            episode_step += 1
-
-            if all(dones.values()) or episode_step >= self.max_steps_per_episode:
-                rollout.end_episode()
-                current_state_dict, _ = self.env.reset()
-                current_state_tensor = obs_dict_to_tensor(observation=current_state_dict, 
-                                                           obs_type=self.obs_type, 
-                                                           n_agents=n_agents,
-                                                           max_depth=self.max_depth, 
-                                                           n_nodes=self.n_nodes)
-                episode_step = 0
-                self.total_episodes += 1
-
-                wandb.log({
-                    'episode': self.total_episodes,
-                    'episode/reward': rollout.episodes[-1]['average_episode_reward'],
-                    'episode/average_length': rollout.episodes[-1]['average_episode_length'],
-                })
-
-        return rollout
+        logits = self.controller.actor_network(states)
+        action_distribution = torch.distributions.Categorical(logits=logits)
+        log_probs = action_distribution.log_prob(actions)
+        entropy = action_distribution.entropy()
+        state_values = self.controller.critic_network(states)
+        next_state_values = self.controller.critic_network(next_states)
+        return log_probs, entropy, state_values, next_state_values
     
 
     def _calculate_metrics(self, rollout: MultiAgentRolloutBuffer) -> None:
