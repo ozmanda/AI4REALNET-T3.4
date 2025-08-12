@@ -5,7 +5,6 @@ from typing import List, Dict, Union
 from src.algorithms.PPO_JBR_HSE.PPORollout import Transition
 
 
-
 class MultiAgentRolloutBuffer:
     """
     A class to manage the rollout buffer for storing transitions during the training of reinforcement learning agents in multi-agent scenarios.
@@ -46,7 +45,8 @@ class MultiAgentRolloutBuffer:
         }
 
 
-    def add_transitions(self, states: Tensor, actions: Dict[Union[int, str], int], log_probs: Dict[Union[int, str], float], rewards: Dict[Union[int, str], float], next_states: Tensor, dones: Dict[Union[int, str], bool]) -> None:
+    def add_transitions(self, states: Tensor, actions: Dict[Union[int, str], int], log_probs: Dict[Union[int, str], float], 
+                        rewards: Dict[Union[int, str], float], next_states: Tensor, dones: Dict[Union[int, str], bool]) -> None:
         """
         Adds a transition to the buffer.
         """
@@ -137,3 +137,12 @@ class MultiAgentRolloutBuffer:
             minibatch = {key: value[i:i + batch_size] for key, value in transitions.items()}
             minibatches.append(minibatch)
         return minibatches
+    
+    @staticmethod
+    def combine_rollouts(rollouts: List["MultiAgentRolloutBuffer"]) -> "MultiAgentRolloutBuffer":
+        """
+        Combines multiple rollouts into a single MultiAgentRolloutBuffer.
+        """
+        # TODO: implement rollout combination logic
+        combined_rollout = MultiAgentRolloutBuffer()
+        return combined_rollout
