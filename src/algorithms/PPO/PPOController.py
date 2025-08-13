@@ -56,14 +56,25 @@ class PPOController(nn.Module):
         """
         return self.actor_network(states)
     
-    
-    def update_actor(self, network_params: Dict):
+
+    def update_weights(self, network_params: Tuple[Dict, Dict]) -> None:
+        """
+        Update the weights of the actor and critic networks.
+
+        Parameters:
+            - network_params: Tuple containing the actor and critic network parameters
+        """
+        actor_params, critic_params = network_params
+        self.update_actor(actor_params)
+        self.update_critic(critic_params)
+
+    def update_actor(self, network_params: Dict) -> None:
         """ Update the actor network with the given parameters. """
         self.old_actor_params = self.actor.state_dict()
         self.new_actor_params = network_params
         self.actor.load_state_dict(self.new_actor_params)
 
-    def update_critic(self, network_params: Dict):
+    def update_critic(self, network_params: Dict) -> None:
         """ Update the critic network with the given parameters. """
         self.old_critic_params = self.critic.state_dict()
         self.new_critic_params = network_params
