@@ -1,6 +1,8 @@
 import os
 import sys
+import time
 import wandb
+import queue
 import argparse
 import numpy as np
 from itertools import chain
@@ -10,6 +12,7 @@ import torch
 from torch import Tensor
 import torch.optim as optim
 import torch.multiprocessing as mp
+from multiprocessing.synchronize import Event
 
 from src.algorithms.PPO.PPOWorker import PPOWorker
 from src.algorithms.PPO.PPOController import PPOController
@@ -23,37 +26,42 @@ class PPOLearner():
     """
     Learner class for the PPO Controller.
     """
-    def __init__(self, controller: PPOController, learner_config: Dict, env_config: Dict) -> None:
-        # Initialise environment and controller
+    def __init__(self, controller: PPOController, learner_config: Dict, env_config: Dict, device: str = None) -> None:
+        # Initialise environment and set controller / learning parameters
         self.env_config = env_config
         self.controller: PPOController = controller
-        self.n_nodes: int = controller.config['n_nodes']
-        self.state_size: int = controller.config['state_size']
-        self.entropy_coeff: float = controller.config['entropy_coefficient']
-        self.value_loss_coeff: float = controller.config['value_loss_coefficient']
-        self.gamma: float = controller.config['gamma'] # TODO: ensure gamma is in learner_config
-
-        # Learning parameters
-        self.max_steps: int = learner_config['max_steps']
-        self.max_steps_per_episode: int = learner_config['max_steps_per_episode']
-        self.total_steps: int = 0
-        self.iterations: int = learner_config['training_iterations']
-        self.batch_size: int = learner_config['batch_size']
-        self.importance_sampling: bool = learner_config['importance_sampling'] # TODO: add importance sampling to config
-        self.episodes_infos: List[Dict] = []
-        self.total_episodes: int = 0
+        self._init_learning_params(learner_config)
+        self._init_controller_params()
 
         # Parallelisation Configuration
-        self.n_workers: int = learner_config['n_workers'] # TODO: add n_workers to learner_config
+        self.n_workers: int = learner_config['n_workers'] 
 
         # Initialise the optimiser
-        self.optimizer: optim.Optimizer = self._build_optimizer(learner_config['optimiser_config']) # TODO: add optimiser_config to learner_config
+        self.optimizer: optim.Optimizer = self._build_optimizer(learner_config['optimiser_config'])
 
         # Initialise wandb for logging
         self._init_wandb(learner_config)
         wandb.watch(self.controller.actor_network, log='all')
         wandb.watch(self.controller.critic_network, log='all')
 
+    def _init_controller_params(self) -> None:
+        self.n_nodes: int = self.controller.config['n_nodes']
+        self.state_size: int = self.controller.config['state_size']
+        self.entropy_coeff: float = self.controller.config['entropy_coefficient']
+        self.value_loss_coeff: float = self.controller.config['value_loss_coefficient']
+        self.gamma: float = self.controller.config['gamma']
+
+    def _init_learning_params(self, learner_config: Dict) -> None:
+        self.max_steps: int = learner_config['max_steps']
+        self.max_steps_per_episode: int = learner_config['max_steps_per_episode']
+        self.target_updates: int = learner_config['target_updates']
+        self.completed_updates: int = 0
+        self.total_steps: int = 0
+        self.iterations: int = learner_config['training_iterations']
+        self.batch_size: int = learner_config['batch_size']
+        self.importance_sampling: bool = learner_config['IS']
+        self.episodes_infos: List[Dict] = []
+        self.total_episodes: int = 0
 
     def _init_wandb(self, learner_config: Dict) -> None:
         """
@@ -64,6 +72,107 @@ class PPOLearner():
         wandb.run.define_metric('train/*', step_metric='update_step')
         wandb.run.name = learner_config['run_name']
         wandb.run.save()
+
+    def _init_queues(self) -> None:
+        # create queues
+        self.logging_queue: mp.Queue = mp.Queue()
+        self.rollout_queue: mp.Queue = mp.Queue()
+        self.weights_queue: mp.Queue = mp.Queue()
+        self.done_event: Event = mp.Event()
+
+
+    def async_run(self) -> None:
+        """
+        Asynchronous PPO training run.
+        """
+
+        # create and start workers
+        workers: List[PPOWorker] = []
+        for worker_id in range(self.n_workers):
+            worker = PPOWorker(worker_id=worker_id,
+                               logging_queue=self.logging_queue,
+                               rollout_queue=self.rollout_queue,
+                               weights_queue=self.weights_queue,
+                               done_event=self.done_event,
+                               env_config=self.env_config,
+                               controller_config=self.controller.config,
+                               max_steps=(self.max_steps, self.max_steps_per_episode),
+                               device='cpu')
+            workers.append(worker)
+            worker.start()
+
+
+        # Broadcast initial weights to all workers, one for each worker, ensuring they start with the same model parameters
+        # TODO: check if this is desirable (different initial starting points could be beneficial)
+        controller_state = (self.controller.actor_network.state_dict(),
+                            self.controller.critic_network.state_dict())
+        for worker in workers:
+            worker.weights_queue.put(controller_state)
+
+        # initialise learning rollout
+        self.rollout = MultiAgentRolloutBuffer(n_agents=self.env_config['n_agents'])
+
+        # gather rollouts and update when enough data is collected
+        while self.completed_updates < self.target_updates:
+            # check episode logging
+            self._log_episode_info()
+
+            # gather rollouts from workers
+            try: 
+                batch = self.rollout_queue.get(timeout=1)
+            except queue.Empty:
+                continue
+
+            # add the batch to the current rollout buffer
+            self.rollout = self.rollout.combine_rollouts(batch)
+
+            # update the controller
+            # TODO: add optimisation step
+            self.completed_updates += 1
+
+            # broadcast updated controller weights
+            controller_state = (self.controller.actor_network.state_dict(),
+                                self.controller.critic_network.state_dict())
+            for worker in workers:
+                worker.weights_queue.put(controller_state)
+
+            wandb.log({
+                'train/update': self.completed_updates,
+                'train/samples_this_update': self.rollout.total_steps
+            })
+
+        self.done_event.set()
+        time.sleep(1)
+
+        # drain any final episode info
+        self._log_episode_info()
+
+        # terminate all workers
+        for w in workers:
+            w.join()
+        for w in workers:
+            if w.is_alive():
+                w.terminate()
+        
+        wandb.finish()
+
+
+    def _log_episode_info(self):
+        try: 
+            while True: 
+                log_info = self.logging_queue.get_nowait()
+                worker_id = log_info['worker_id']
+                wandb.log({
+                    f'worker_{worker_id}/episode_reward': log_info['episode/reward'],
+                    f'worker_{worker_id}/episode_length': log_info['episode/average_length'],
+                    # global aggregated metrics
+                    'episode/average_reward': log_info['episode/reward'],
+                    'episode/average_length': log_info['episode/average_length'],
+                    'episode/worker_id': worker_id,
+                    'episode/id': log_info['episode']
+                })
+        except queue.Empty:
+            pass
 
 
     def worker_entry(self, worker_id: int, queue: mp.Queue) -> None:
@@ -77,31 +186,50 @@ class PPOLearner():
         rollout = worker.run()
         queue.put(rollout)
     
-
-    def gather_rollout(self) -> MultiAgentRolloutBuffer:
-        """
-        Rollout function to gather experience tuples for the PPO agent.
+    # TODO: clean up
+    # def gather_rollout(self) -> MultiAgentRolloutBuffer:
+    #     """
+    #     Rollout function to gather experience tuples for the PPO agent.
         
-        :return: List of transitions collected during the rollout.
-        """
-        # parallelisation of rollout gathering
-        mp.set_start_method('spawn')
-        queue: mp.Queue = mp.Queue()
-        processes: List[mp.Process] = []
-        for worker_id in range(self.n_workers):
-            process = mp.Process(target=self.worker_entry, args=(worker_id, queue))
-            processes.append(process)
-            process.start()
+    #     :return: List of transitions collected during the rollout.
+    #     """
+    #     # parallelisation of rollout gathering - spawn is safer for pytorch
+    #     # TODO: add device specification for the workers
+    #     mp.set_start_method('spawn')
+    #     rollout_queue: mp.Queue = mp.Queue()
+    #     logging_queue: mp.Queue = mp.Queue()
+    #     processes: List[mp.Process] = []
+    #     for _ in range(self.n_workers):
+    #         process = mp.Process(target=self.worker_entry, args=(logging_queue, rollout_queue))
+    #         processes.append(process)
+    #         process.start()
 
-        rollouts: List[MultiAgentRolloutBuffer] = [queue.get() for _ in range(self.n_workers)]
+    #     # Monitor logging queue for worker information
+    #     finished_workers: int = 0
+    #     rollouts: List[MultiAgentRolloutBuffer] = []
 
-        for process in processes:
-            process.join()
+    #     while finished_workers < self.n_workers:
+    #         if not logging_queue.empty(): 
+    #             # send logging information to wandb
+    #             pass
+    #         while not rollout_queue.empty():
+    #             # append rollout to the rollout list and increment finished workers
+    #             pass
 
-        # Combine rollouts from all workers
-        combined_rollout: MultiAgentRolloutBuffer = MultiAgentRolloutBuffer.combine_rollouts(rollouts)
+    #         # avoid busy waiting
+    #         time.sleep(0.05)
 
-        return combined_rollout
+    
+
+    #     rollouts: List[MultiAgentRolloutBuffer] = [rollout_queue.get() for _ in range(self.n_workers)]
+
+    #     for process in processes:
+    #         process.join()
+
+    #     # Combine rollouts from all workers
+    #     combined_rollout: MultiAgentRolloutBuffer = MultiAgentRolloutBuffer.combine_rollouts(rollouts)
+
+    #     return combined_rollout
 
 
     def _build_optimizer(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
@@ -111,7 +239,7 @@ class PPOLearner():
             raise Warning('Only Adam optimiser has been implemented')
 
 
-    def _optimise(self, rollouts: MultiAgentRolloutBuffer) -> Dict[str, List[float]]:
+    def _optimise(self, rollout: MultiAgentRolloutBuffer) -> Dict[str, List[float]]:
         """
         Optimise the model parameters using the collected rollouts.
         """
@@ -120,7 +248,7 @@ class PPOLearner():
             'value_loss': []
         }
 
-        total_loss, actor_loss, critic_loss = self._loss(rollouts)
+        total_loss, actor_loss, critic_loss = self._loss(rollout)
 
         self.optimiser.zero_grad()
         total_loss.backward()
@@ -130,6 +258,8 @@ class PPOLearner():
         # add metrics
         losses['policy_loss'].append(actor_loss.mean().item())
         losses['value_loss'].append(critic_loss.mean().item())
+
+        # Log losses to wandb
         wandb.log({
             'update_step': self.update_step,
             'train/policy_loss': np.mean(losses['policy_loss']),
@@ -155,7 +285,6 @@ class PPOLearner():
                 n_episodes += len(rollout.episodes)
                 losses = self._optimise(rollout)
                 self.total_steps += rollout.total_steps
-
 
                 episode_rewards = [episode['average_episode_reward'] for episode in rollout.episodes]
                 average_episode_reward = sum(episode_rewards) / len(episode_rewards)
