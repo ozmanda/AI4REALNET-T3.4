@@ -11,6 +11,7 @@ class MultiAgentRolloutBuffer:
     """
 
     def __init__(self, n_agents: int = None) -> None:
+        # TODO: class for training with dynamic number of agents
         self.n_agents: int = n_agents
         self.episodes: List[Dict] = []
         self.current_episode: Dict[str, List] = {}
@@ -140,11 +141,11 @@ class MultiAgentRolloutBuffer:
         return minibatches
     
 
-    @staticmethod
-    def combine_rollouts(rollouts: List["MultiAgentRolloutBuffer"]) -> "MultiAgentRolloutBuffer":
+    def combine_rollouts(self, rollouts: List["MultiAgentRolloutBuffer"]) -> "MultiAgentRolloutBuffer":
         """
         Combines multiple rollouts into a single MultiAgentRolloutBuffer.
         """
-        # TODO: implement rollout combination logic
-        combined_rollout = MultiAgentRolloutBuffer()
+        combined_rollout = MultiAgentRolloutBuffer(n_agents=self.n_agents)
+        for rollout in rollouts:
+            combined_rollout.episodes.extend(rollout.episodes)
         return combined_rollout
