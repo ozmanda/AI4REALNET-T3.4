@@ -12,8 +12,9 @@ from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
 from src.networks.FeedForwardNN import FeedForwardNN
 
 
-class PPOController():
+class PPOController(nn.Module):
     def __init__(self, config: Dict, agent_ID: Union[int, str] = None):
+        super(PPOController, self).__init__()
         self.config: Dict = config
         if agent_ID:
             self.agent_ID: Union[int, str] = agent_ID
@@ -54,6 +55,32 @@ class PPOController():
             - logits: Tensor (batch_size, n_actions)
         """
         return self.actor_network(states)
+    
+    
+    def update_actor(self, network_params: Dict):
+        """ Update the actor network with the given parameters. """
+        self.old_actor_params = self.actor.state_dict()
+        self.new_actor_params = network_params
+        self.actor.load_state_dict(self.new_actor_params)
+
+    def update_critic(self, network_params: Dict):
+        """ Update the critic network with the given parameters. """
+        self.old_critic_params = self.critic.state_dict()
+        self.new_critic_params = network_params
+        self.critic.load_state_dict(self.new_critic_params)
+
+    def get_network_params(self) -> Tuple[Dict, Dict]:
+        """
+        Get the current parameters of the actor and critic networks.
+        
+        Returns:
+            - actor_params: Dict containing the actor network parameters
+            - critic_params: Dict containing the critic network parameters
+        """
+        actor_params = self.actor.state_dict()
+        critic_params = self.critic.state_dict()
+        return actor_params, critic_params
+        
 
     def state_values(self, states: Tensor, next_states: Tensor) -> Tensor:
         """
