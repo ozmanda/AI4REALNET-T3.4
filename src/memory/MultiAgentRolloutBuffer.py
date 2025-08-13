@@ -12,7 +12,6 @@ class MultiAgentRolloutBuffer:
 
     def __init__(self, n_agents: int = None) -> None:
         self.n_agents: int = n_agents
-        self.buffer: List[Dict[str, Tensor]] = []
         self.episodes: List[Dict] = []
         self.current_episode: Dict[str, List] = {}
         self.n_episodes: int = 0
@@ -27,6 +26,7 @@ class MultiAgentRolloutBuffer:
         self.n_agents = len(agent_handles)
         self.episodes: List = []
         self._reset_current_episode()
+
 
     def _reset_current_episode(self) -> None:
         self.current_episode: Dict[str, List] = {
@@ -76,6 +76,7 @@ class MultiAgentRolloutBuffer:
         self.total_steps += self.current_episode['average_episode_length']
         self._reset_current_episode()
         self.n_episodes += 1
+
 
     def get_transitions(self, shuffle: bool) -> Dict[str, Tensor]:
         """
@@ -138,6 +139,7 @@ class MultiAgentRolloutBuffer:
             minibatches.append(minibatch)
         return minibatches
     
+
     @staticmethod
     def combine_rollouts(rollouts: List["MultiAgentRolloutBuffer"]) -> "MultiAgentRolloutBuffer":
         """
