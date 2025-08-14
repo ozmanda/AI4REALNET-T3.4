@@ -18,17 +18,16 @@ from src.utils.obs_utils import calculate_state_size
 
 from src.configs.EnvConfig import FlatlandEnvConfig
 from src.configs.ControllerConfigs import PPOControllerConfig
-from src.algorithms.PPO.PPOController import PPOController
 from src.algorithms.PPO.PPOLearner import PPOLearner
 
 
-def train_ppo(random_seed: int, controller: PPOController, learner_config: Dict, env_config: Dict, device: str) -> None:
+def train_ppo(random_seed: int, controller_config: PPOControllerConfig, learner_config: Dict, env_config: Dict, device: str) -> None:
     init_random_seeds(random_seed)
-    learner = PPOLearner(controller=controller,
+    learner = PPOLearner(controller_config=controller_config,
                          learner_config=learner_config,
                          env_config=env_config,
                          device=device)
-    metrics = learner.run()
+    learner.async_run()
 
 
 def init_random_seeds(random_seed: int, cuda_deterministic: bool = False) -> None:
@@ -47,7 +46,7 @@ if __name__ == '__main__':
     parser.add_argument('--config_path', type=str, default='src/configs/ppo_config.yaml', help='Path to the configuration file')
     parser.add_argument('--random_seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the training on (cpu or cuda)')
-    parser.add_argument('--n_workers', type=int, default=None, help='Number of parallel workers for training')
+    parser.add_argument('--n_workers', type=int, default=5, help='Number of parallel workers for training')
     args = parser.parse_args()
 
 
@@ -67,11 +66,10 @@ if __name__ == '__main__':
     # prepare controller
     config['controller_config']['n_nodes'], config['controller_config']['state_size'] = calculate_state_size(env_config.observation_builder_config['max_depth'])
     controller_config = PPOControllerConfig(config['controller_config'])
-    controller = controller_config.create_controller()
 
 
     train_ppo(random_seed = args.random_seed,
-              controller = controller,
+              controller_config = controller_config,
               learner_config = learner_config,
               env_config = env_config, 
               device = args.device)
