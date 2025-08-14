@@ -20,8 +20,8 @@ class PPOController(nn.Module):
             self.agent_ID: Union[int, str] = agent_ID
         self._init_hyperparameters(config)
 
-        self.actor: nn.Module = self._build_actor()
-        self.critic: nn.Module = self._build_critic()
+        self._build_actor()
+        self._build_critic()
         self.update_step: int = 0
 
     def _init_hyperparameters(self, config: Dict) -> None:
@@ -70,15 +70,15 @@ class PPOController(nn.Module):
 
     def update_actor(self, network_params: Dict) -> None:
         """ Update the actor network with the given parameters. """
-        self.old_actor_params = self.actor.state_dict()
+        self.old_actor_params = self.actor_network.state_dict()
         self.new_actor_params = network_params
-        self.actor.load_state_dict(self.new_actor_params)
+        self.actor_network.load_state_dict(self.new_actor_params)
 
     def update_critic(self, network_params: Dict) -> None:
         """ Update the critic network with the given parameters. """
-        self.old_critic_params = self.critic.state_dict()
+        self.old_critic_params = self.critic_network.state_dict()
         self.new_critic_params = network_params
-        self.critic.load_state_dict(self.new_critic_params)
+        self.critic_network.load_state_dict(self.new_critic_params)
 
     def get_network_params(self) -> Tuple[Dict, Dict]:
         """
@@ -88,8 +88,8 @@ class PPOController(nn.Module):
             - actor_params: Dict containing the actor network parameters
             - critic_params: Dict containing the critic network parameters
         """
-        actor_params = self.actor.state_dict()
-        critic_params = self.critic.state_dict()
+        actor_params = self.actor_network.state_dict()
+        critic_params = self.critic_network.state_dict()
         return actor_params, critic_params
         
 
