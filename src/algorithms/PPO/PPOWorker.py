@@ -17,6 +17,11 @@ from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
 Transition = namedtuple('Transition', ('state', 'action', 'log_prob', 'reward', 'next_state', 'done', 'info'))
 
 class PPOWorker(mp.Process): 
+    """
+    Worker class that inherits from torch.multiprocessing.Process, meaning that when the .start() method is called on PPOWorker,
+    the entry point is the run() function. This 
+    """
+
     def __init__(self, worker_id: Union[str, int], env_config: FlatlandEnvConfig, controller_config: PPOControllerConfig, 
                  logging_queue: mp.Queue, rollout_queue: mp.Queue, weights_queue: mp.Queue, done_event: Event,
                  max_steps: Tuple = (10000, 1000), device: str = 'cpu'):
@@ -46,23 +51,22 @@ class PPOWorker(mp.Process):
         """
         Initialize the environment based on the provided configuration.
         """
-        self.obs_type: str = self.env_config['observation_builder_config']['type']
-        self.max_depth: int = self.env_config['observation_builder_config']['max_depth']
-
-        self.env_config = FlatlandEnvConfig(self.env_config)
+        self.obs_type: str = self.env_config.observation_builder_config['type']
+        self.max_depth: int = self.env_config.observation_builder_config['max_depth']
         self.env: RailEnv = self.env_config.create_env()
 
 
     def run(self) -> MultiAgentRolloutBuffer:
         """
+        Entry point for worker.run()
         Run a single episode in the environment and collect rollouts.
         """
         self.env.reset()
-        self.rollout.reset(agent_handles=self.env.get_agent_handles())
+        self.rollout.reset(n_agents=self.env.number_of_agents)
         self._try_refresh_weights()
-        # TODO: add actor-critic update after each episode
 
         episode_step = 0
+        self.total_episodes = 0
         current_state_dict, _ = self.env.reset()
         n_agents = self.env.number_of_agents
         current_state_tensor: Tensor = obs_dict_to_tensor(observation=current_state_dict, 
@@ -74,8 +78,10 @@ class PPOWorker(mp.Process):
         while not self.done_event.is_set():
             actions, log_probs = self.controller.sample_action(current_state_tensor)
             actions_dict: Dict[Union[int, str], Tensor] = {}
-            for i, agent_handle in enumerate(self.env.get_agent_handles()):
-                actions_dict[agent_handle] = actions[i]
+            
+            # TODO: consider agents which have already terminated
+            for i in range(self.env.number_of_agents):
+                actions_dict[i] = actions[i].detach()
 
             next_state, rewards, dones, infos = self.env.step(actions_dict)
             next_state_tensor: Tensor = obs_dict_to_tensor(observation=next_state, 
@@ -84,14 +90,17 @@ class PPOWorker(mp.Process):
                                                            max_depth=self.max_depth, 
                                                            n_nodes=self.controller.config['n_nodes'])
 
-            self.rollout.add_transitions(states=current_state_tensor, actions=actions_dict, log_probs=log_probs, 
-                                    rewards=rewards, next_states=next_state_tensor, dones=dones)
+            self.rollout.add_transitions(states=current_state_tensor.detach(), 
+                                         actions=actions_dict, 
+                                         log_probs=log_probs.detach(), 
+                                         rewards=rewards, 
+                                         next_states=next_state_tensor.detach(), 
+                                         dones=dones)
 
             current_state_tensor = next_state_tensor
             episode_step += 1
 
             if all(dones.values()) or episode_step >= self.max_steps_per_episode:
-                # TODO: gather current episode info and pass it to the queue
                 self.rollout.end_episode()
                 current_state_dict, _ = self.env.reset()
                 current_state_tensor = obs_dict_to_tensor(observation=current_state_dict, 
@@ -102,10 +111,15 @@ class PPOWorker(mp.Process):
                 episode_step = 0
                 self.total_episodes += 1
 
+                self.rollout_queue.put(self.rollout.episodes[-1])
                 self.logging_queue.put({'worker_id': self.worker_id,
                                         'episode': self.total_episodes,
                                         'episode/reward': self.rollout.episodes[-1]['average_episode_reward'],
-                                        'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})            
+                                        'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})
+                # if self.total_episodes % 10 == 0:
+                #     print(f'Worker {self.worker_id} finished episode {self.total_episodes}  - Average Reward: {self.rollout.episodes[-1]["average_episode_reward"]}')
+
+                updated = self._try_refresh_weights()
 
         # TODO: add IMPALA vtrace correction
         self._generalised_advantage_estimator()
@@ -156,6 +170,8 @@ class PPOWorker(mp.Process):
                 state = self.weights_queue.get_nowait()
                 self.controller.update_weights(state)
                 updated = True
+                print(f'Worker {self.worker_id} updated weights')
+                break
             except queue.Empty:
                 break
         return updated
