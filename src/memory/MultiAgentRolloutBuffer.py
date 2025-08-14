@@ -19,12 +19,11 @@ class MultiAgentRolloutBuffer:
         self.total_steps: int = 0
 
 
-    def reset(self, agent_handles: List[Union[int, str]]) -> None:
+    def reset(self, n_agents) -> None:
         """
         Resets the buffer by clearing all stored transitions.
         """
-        self.agent_handles = agent_handles
-        self.n_agents = len(agent_handles)
+        self.n_agents = n_agents
         self.episodes: List = []
         self._reset_current_episode()
 
@@ -51,7 +50,7 @@ class MultiAgentRolloutBuffer:
         """
         Adds a transition to the buffer.
         """
-        for agent_handle in self.agent_handles:
+        for agent_handle in range(self.n_agents):
             self.current_episode['states'][agent_handle].append(states[agent_handle])
             self.current_episode['actions'][agent_handle].append(actions[agent_handle])
             self.current_episode['log_probs'][agent_handle].append(log_probs[agent_handle])
@@ -61,20 +60,21 @@ class MultiAgentRolloutBuffer:
         self.total_steps += 1
 
 
-    def end_episode(self) -> None:
+    def end_episode(self, verbose: int = 0) -> None:
         agent_episode_rewards = []
         total_episode_length = 0
-        for agent in self.agent_handles:
+        for agent in range(self.n_agents):
             self.current_episode['episode_length'][agent] += len(self.current_episode['states'][agent])
             agent_episode_rewards.append(sum(self.current_episode['rewards'][agent]) / len(self.current_episode['rewards'][agent]))
 
         self.current_episode['average_episode_length'] = np.sum(self.current_episode['episode_length']) / self.n_agents
         self.current_episode['average_episode_reward'] = sum(agent_episode_rewards) / self.n_agents
 
-        print(f"\nEpisode {self.n_episodes + 1} - Average Reward: {self.current_episode['average_episode_reward']}\n")
+        if verbose > 0:
+            print(f"\nEpisode {self.n_episodes + 1} - Average Reward: {self.current_episode['average_episode_reward']}\n")
 
         self.episodes.append(self.current_episode)
-        self.total_steps += self.current_episode['average_episode_length']
+        self.total_steps += np.sum(self.current_episode['episode_length'])
         self._reset_current_episode()
         self.n_episodes += 1
 
@@ -93,7 +93,7 @@ class MultiAgentRolloutBuffer:
         dones = []
         gaes = []
         for episode in self.episodes:
-            for agent_handle in self.agent_handles:
+            for agent_handle in range(self.n_agents):
                 states.extend(episode['states'][agent_handle])
                 next_states.extend(episode['next_states'][agent_handle])
                 state_values.extend(episode['state_values'][agent_handle])
@@ -141,6 +141,15 @@ class MultiAgentRolloutBuffer:
         return minibatches
     
 
+    def add_episode(self, episode) -> None: 
+        """
+        Adds an external episode to the buffer
+        """
+        self.episodes.append(episode)
+        self.total_steps += np.sum(episode['episode_length'])
+        self.n_episodes += 1
+
+
     def combine_rollouts(self, rollouts: List["MultiAgentRolloutBuffer"]) -> "MultiAgentRolloutBuffer":
         """
         Combines multiple rollouts into a single MultiAgentRolloutBuffer.
@@ -148,4 +157,11 @@ class MultiAgentRolloutBuffer:
         combined_rollout = MultiAgentRolloutBuffer(n_agents=self.n_agents)
         for rollout in rollouts:
             combined_rollout.episodes.extend(rollout.episodes)
+            combined_rollout.total_steps += rollout.total_steps
+            combined_rollout.n_episodes += rollout.n_episodes
+            combined_rollout.agent_handles = rollout.agent_handles
         return combined_rollout
+
+    def _len(self) -> int:
+        """ Returns the total number of steps in the buffer """
+        return self.total_steps
