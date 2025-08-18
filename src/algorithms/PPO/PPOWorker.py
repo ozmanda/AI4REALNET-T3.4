@@ -89,7 +89,6 @@ class PPOWorker(mp.Process):
                                                            n_agents=n_agents,
                                                            max_depth=self.max_depth, 
                                                            n_nodes=self.controller.config['n_nodes'])
-
             self.rollout.add_transitions(states=current_state_tensor.detach(), 
                                          actions=actions_dict, 
                                          log_probs=log_probs.detach(), 
@@ -101,6 +100,8 @@ class PPOWorker(mp.Process):
             episode_step += 1
 
             if all(dones.values()) or episode_step >= self.max_steps_per_episode:
+                self._generalised_advantage_estimator()
+                # TODO: add IMPALA vtrace correction
                 self.rollout.end_episode()
                 current_state_dict, _ = self.env.reset()
                 current_state_tensor = obs_dict_to_tensor(observation=current_state_dict, 
@@ -116,19 +117,15 @@ class PPOWorker(mp.Process):
                                         'episode': self.total_episodes,
                                         'episode/reward': self.rollout.episodes[-1]['average_episode_reward'],
                                         'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})
-                # if self.total_episodes % 10 == 0:
-                #     print(f'Worker {self.worker_id} finished episode {self.total_episodes}  - Average Reward: {self.rollout.episodes[-1]["average_episode_reward"]}')
 
+                # TODO: ensure only new weights taken
                 updated = self._try_refresh_weights()
 
-        # TODO: add IMPALA vtrace correction
-        self._generalised_advantage_estimator()
-        self.rollout_queue.put(self.rollout)
 
 
     def _generalised_advantage_estimator(self) -> Tensor:
         """
-        Calculate the Generalised Advantage Estimator (GAE) for the given state and reward.
+        Calculate the Generalised Advantage Estimator (GAE) for the current episode (called before rollout.end_episode).
 
         Parameters:
             - state          Tensor      (batch_size, n_features)
@@ -141,27 +138,26 @@ class PPOWorker(mp.Process):
             - advantages     Tensor      (batch_size)
         """
         with torch.no_grad():
-            for idx, episode in enumerate(self.rollout.episodes):
-                for agent in self.rollout.agent_handles:
-                    states = torch.stack(episode['states'][agent])
-                    next_states = torch.stack(episode['next_states'][agent])
-                    rewards = torch.tensor(episode['rewards'][agent])
-                    dones = torch.tensor(episode['dones'][agent]).float()
-                    dones = (dones != 0).float()
-                    gaes = torch.zeros(len(states))
+            for agent in range(self.env.number_of_agents):
+                states = torch.stack(self.rollout.current_episode['states'][agent])
+                next_states = torch.stack(self.rollout.current_episode['next_states'][agent])
+                rewards = torch.tensor(self.rollout.current_episode['rewards'][agent])
+                dones = torch.tensor(self.rollout.current_episode['dones'][agent]).float()
+                dones = (dones != 0).float()
+                gaes = torch.zeros(len(states))
 
-                    state_values: Tensor = self.controller.critic_network(states).squeeze(-1)
-                    next_state_values: Tensor = self.controller.critic_network(next_states).squeeze(-1)
+                state_values: Tensor = self.controller.critic_network(states).squeeze(-1)
+                next_state_values: Tensor = self.controller.critic_network(next_states).squeeze(-1)
 
-                    self.rollout.episodes[idx]['state_values'][agent] = state_values
-                    self.rollout.episodes[idx]['next_state_values'][agent] = next_state_values
+                self.rollout.current_episode['state_values'][agent] = state_values
+                self.rollout.current_episode['next_state_values'][agent] = next_state_values
 
-                    deltas = rewards + self.controller.gamma * next_state_values * (1 - dones) - state_values
+                deltas = rewards + self.controller.gamma * next_state_values * (1 - dones) - state_values
 
-                    for i in reversed(range(len(deltas))):
-                        gaes[i] = deltas[i] + self.controller.gamma * gaes[i + 1] * (1 - dones[i]) if i < len(deltas) - 2 else deltas[i]
+                for i in reversed(range(len(deltas))):
+                    gaes[i] = deltas[i] + self.controller.gamma * gaes[i + 1] * (1 - dones[i]) if i < len(deltas) - 2 else deltas[i]
 
-                    self.rollout.episodes[idx]['gaes'][agent] = gaes
+                self.rollout.current_episode['gaes'][agent] = gaes
 
     def _try_refresh_weights(self):
         updated = False

@@ -39,6 +39,7 @@ class PPOLearner():
 
         # Initialise the optimiser
         self.optimizer: optim.Optimizer = self._build_optimizer(learner_config['optimiser_config'])
+        self.update_step: int = 0
 
         # Initialise wandb for logging
         self._init_wandb(learner_config)
@@ -97,6 +98,7 @@ class PPOLearner():
                             self.controller.critic_network.state_dict())
         for worker in range(self.n_workers):
             self.weights_queue.put(controller_state)
+            # TODO: ensure that workers only u
 
         # initialise learning rollout
         self.rollout = MultiAgentRolloutBuffer(n_agents=self.env_config.n_agents)
@@ -140,7 +142,7 @@ class PPOLearner():
                 })
 
                 # reset rollout
-                self.rollout.reset(agent_handles=range(self.env_config.n_agents))
+                self.rollout.reset(n_agents=self.env_config.n_agents)
 
 
                 # broadcast updated controller weights
