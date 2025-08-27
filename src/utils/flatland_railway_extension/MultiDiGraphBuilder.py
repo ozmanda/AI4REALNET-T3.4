@@ -276,6 +276,23 @@ class MultiDiGraphBuilder:
                 self.rail_ID_mapping[rail_ID].append((u, v))
 
 
+    def _get_all_k_shortest_paths(self, k=4, weight='length'): 
+        """
+        Get the k-shortest paths between each every station-pair.
+        """
+        station_nodes = self.station_lookup.keys()
+        path_lookup: Dict[Tuple[Tuple[int, int], Tuple[int, int]], List[str]] = {}
+        paths: Dict[str, List] = []
+        for source_node in station_nodes:
+            for target_node in station_nodes:
+                if source_node != target_node:
+                    for k, path in enumerate(self._get_k_shortest_paths(source_node, target_node, k, weight=weight)):
+                        pathID = f"{source_node}_{target_node}_{k}"
+                        paths[pathID] = path
+                        path_lookup[(source_node, target_node)].append(pathID)
+        return path_lookup, paths
+                        
+
     def _get_k_shortest_paths(self, source_node, target_node, k, weight=None) -> islice:
         """
         Find the k shortest paths in the graph.
@@ -288,18 +305,20 @@ class MultiDiGraphBuilder:
         return islice(nx.shortest_simple_paths(self.graph, source_node, target_node, weight=weight), k)
     
 
-    def identify_conflicts(self) -> None:
+    def _path_conflict_matrix(self, paths) -> np.ndarray:
+        path_conflict_matrix = np.zeros((len(paths), len(paths)))
+        for i, path in enumerate(paths):
+            for j, other_path in enumerate(paths):
+                if i != j and set(path) & set(other_path):
+                    path_conflict_matrix[i, j] = 1
+        return path_conflict_matrix
+
+
+    def identify_conflicts(self, k: int = 4, weight: str = 'length') -> Tuple[np.ndarray, Dict[Tuple[Tuple[int, int], Tuple[int, int]], List[str]]]:
         """
         Identify conflicts in the graph based on overlapping paths.
         """
-        station_nodes = self._get_station_nodes()
-        pass
+        path_lookup, paths = self._get_all_k_shortest_paths(k=k, weight=weight)
+        path_conflict_matrix = self._path_conflict_matrix(paths)
+        return path_conflict_matrix, path_lookup
 
-
-
-    def _get_station_nodes(self) -> List[str]:
-        station_nodes = []
-        for node, data in self.graph.nodes(data=True):
-            if 'station' in data and data['station']:
-                station_nodes.append(node)
-        return station_nodes

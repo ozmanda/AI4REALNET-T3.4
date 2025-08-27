@@ -111,9 +111,34 @@ class TestMultiDiGraphBuilder_Complex(unittest.TestCase):
     def test_stations(self):
         """ Test the recognition of stations in the graph and identification of IDs """
         self.station_graph_test()
-        img = self.env.render()
-        plt.imshow(img)
         for station_ID, coordinates in self.graph.stations_dict.items():
             self.assertIn(coordinates, self.graph.graph.nodes, f"Station {station_ID} should be present in the graph.")
             self.assertEqual(self.stations[int(station_ID)], coordinates,
                              f"Coordinates for station {station_ID} should be {coordinates}.")
+            
+    def test_path_generation(self):
+        """ Test the generation of k-shortest paths for station pairs """
+        self.station_graph_test()
+        path_conflict_matrix, path_lookup = self.graph.identify_conflicts()
+        n_paths_per_pair = {
+            ((2,4),(8,5)):  3,
+            ((2,4),(5,10)): 2,
+            ((2,4),(1,16)): 4,
+            ((2,4),(8,15)): 4,
+            ((8,5),(5,10)): 4,
+            ((8,5),(1,16)): 4,
+            ((8,5),(8,15)): 4,
+            ((5,10),(1,16)): 4,
+            ((5,10),(8,15)): 4,
+            ((1,16),(8,15)): 4
+        }
+        for pair in n_paths_per_pair.keys():
+            self.assertIn(pair, path_lookup.keys(), f"Path pair {pair} should be present in the path lookup.")
+            self.assertEqual(len(path_lookup[pair]), n_paths_per_pair[pair],
+                             f"Path pair {pair} should have {n_paths_per_pair[pair]} paths.")
+        pass
+
+
+    def test_conflict_identification(self):
+        """ Test the identification of conflicts between paths """
+        pass
