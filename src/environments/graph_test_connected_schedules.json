@@ -1,0 +1,493 @@
+{
+  "gridDimensions": {
+    "rows": 9,
+    "cols": 20,
+    "cellSize": 30
+  },
+  "grid": [
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      16386,
+      1025,
+      4608,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      16386,
+      1025,
+      17411,
+      1025,
+      1025,
+      1025,
+      34864,
+      0,
+      32872,
+      1025,
+      1025,
+      1025,
+      5633,
+      1025,
+      4608,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      32800,
+      16386,
+      38505,
+      4608,
+      0,
+      16386,
+      34864,
+      0,
+      32872,
+      4608,
+      0,
+      16386,
+      52275,
+      4608,
+      32800,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      72,
+      2064,
+      32800,
+      128,
+      16386,
+      34864,
+      32800,
+      0,
+      32800,
+      32872,
+      4608,
+      128,
+      32800,
+      72,
+      2064,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      16386,
+      52275,
+      4608,
+      32800,
+      32800,
+      72,
+      1025,
+      2064,
+      32800,
+      32800,
+      16386,
+      38505,
+      4608,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      32800,
+      32800,
+      72,
+      2064,
+      32800,
+      0,
+      0,
+      0,
+      32800,
+      72,
+      2064,
+      32800,
+      32800,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      32800,
+      72,
+      1025,
+      1025,
+      2064,
+      0,
+      0,
+      0,
+      72,
+      1025,
+      1025,
+      2064,
+      32800,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      72,
+      1025,
+      1025,
+      1025,
+      1025,
+      1025,
+      1025,
+      1025,
+      1025,
+      1025,
+      1025,
+      1025,
+      2064,
+      0,
+      0,
+      0
+    ]
+  ],
+  "overpasses": [],
+  "stations": [
+    {
+      "id": 1,
+      "r": 8,
+      "c": 5
+    },
+    {
+      "id": 2,
+      "r": 8,
+      "c": 15
+    },
+    {
+      "id": 3,
+      "r": 5,
+      "c": 10
+    },
+    {
+      "id": 4,
+      "r": 2,
+      "c": 4
+    },
+    {
+      "id": 5,
+      "r": 2,
+      "c": 16
+    }
+  ],
+  "nextStationId": 6,
+  "lines": [
+    {
+      "id": 1756207916125,
+      "name": "Line 1",
+      "stationIds": [
+        4,
+        1,
+        2,
+        5,
+        3,
+        4
+      ]
+    },
+    {
+      "id": 1756207921594,
+      "name": "Line 2",
+      "stationIds": [
+        4,
+        3,
+        5,
+        2,
+        1,
+        4
+      ]
+    }
+  ],
+  "schedules": [
+    {
+      "id": 1756208200059,
+      "name": "Line 1",
+      "lineId": 1756207916125,
+      "trainClassId": 1,
+      "travelFactor": 1.1,
+      "stops": [
+        {
+          "stationId": 4,
+          "dwellTime": null,
+          "earliestDeparture": 1,
+          "latestArrival": null
+        },
+        {
+          "stationId": 1,
+          "dwellTime": 2,
+          "earliestDeparture": 18,
+          "latestArrival": 16
+        },
+        {
+          "stationId": 2,
+          "dwellTime": 1,
+          "earliestDeparture": 31,
+          "latestArrival": 30
+        },
+        {
+          "stationId": 5,
+          "dwellTime": 1,
+          "earliestDeparture": 47,
+          "latestArrival": 46
+        },
+        {
+          "stationId": 3,
+          "dwellTime": 2,
+          "earliestDeparture": 64,
+          "latestArrival": 62
+        },
+        {
+          "stationId": 4,
+          "dwellTime": null,
+          "earliestDeparture": null,
+          "latestArrival": 80
+        }
+      ]
+    },
+    {
+      "id": 1756208259633,
+      "name": "Line 2",
+      "lineId": 1756207921594,
+      "trainClassId": 1,
+      "travelFactor": 1.1,
+      "stops": [
+        {
+          "stationId": 4,
+          "dwellTime": null,
+          "earliestDeparture": 1,
+          "latestArrival": null
+        },
+        {
+          "stationId": 3,
+          "dwellTime": 1,
+          "earliestDeparture": 18,
+          "latestArrival": 16
+        },
+        {
+          "stationId": 5,
+          "dwellTime": 2,
+          "earliestDeparture": 35,
+          "latestArrival": 33
+        },
+        {
+          "stationId": 2,
+          "dwellTime": 1,
+          "earliestDeparture": 52,
+          "latestArrival": 51
+        },
+        {
+          "stationId": 1,
+          "dwellTime": 1,
+          "earliestDeparture": 64,
+          "latestArrival": 63
+        },
+        {
+          "stationId": 4,
+          "dwellTime": null,
+          "earliestDeparture": null,
+          "latestArrival": 80
+        }
+      ]
+    }
+  ],
+  "trainClasses": [
+    {
+      "id": 1,
+      "name": "High-Speed",
+      "speed": 1
+    },
+    {
+      "id": 2,
+      "name": "Express",
+      "speed": 0.8
+    },
+    {
+      "id": 3,
+      "name": "Local",
+      "speed": 0.6
+    },
+    {
+      "id": 4,
+      "name": "Cargo",
+      "speed": 0.5
+    }
+  ],
+  "flatland line": {
+    "agent_positions": [
+      [
+        [
+          2,
+          4
+        ],
+        [
+          8,
+          5
+        ],
+        [
+          8,
+          15
+        ],
+        [
+          2,
+          16
+        ],
+        [
+          5,
+          10
+        ]
+      ],
+      [
+        [
+          2,
+          4
+        ],
+        [
+          5,
+          10
+        ],
+        [
+          2,
+          16
+        ],
+        [
+          8,
+          15
+        ],
+        [
+          8,
+          5
+        ]
+      ]
+    ],
+    "agent_directions": [
+      [
+        3,
+        1,
+        1,
+        3,
+        1
+      ],
+      [
+        1,
+        3,
+        1,
+        3,
+        3
+      ]
+    ],
+    "agent_targets": [
+      [
+        2,
+        4
+      ],
+      [
+        2,
+        4
+      ]
+    ],
+    "agent_speeds": [
+      1,
+      1
+    ]
+  },
+  "flatland timetable": {
+    "earliest_departures": [
+      [
+        1,
+        18,
+        31,
+        47,
+        64,
+        null
+      ],
+      [
+        1,
+        18,
+        35,
+        52,
+        64,
+        null
+      ]
+    ],
+    "latest_arrivals": [
+      [
+        null,
+        16,
+        30,
+        46,
+        62,
+        80
+      ],
+      [
+        null,
+        16,
+        33,
+        51,
+        63,
+        80
+      ]
+    ],
+    "max_episode_steps": 160
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "gridDimensions": {
+    "rows": 7,
+    "cols": 8,
+    "cellSize": 30
+  },
+  "grid": [
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      16386,
+      1025,
+      1025,
+      1025,
+      1025,
+      4608,
+      0
+    ],
+    [
+      0,
+      32800,
+      16386,
+      1025,
+      1025,
+      1025,
+      34864,
+      0
+    ],
+    [
+      0,
+      32800,
+      49186,
+      1025,
+      1025,
+      1025,
+      34864,
+      0
+    ],
+    [
+      0,
+      32800,
+      49186,
+      1025,
+      1025,
+      1025,
+      34864,
+      0
+    ],
+    [
+      0,
+      72,
+      3089,
+      1025,
+      1025,
+      1025,
+      2064,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "overpasses": [],
+  "stations": [
+    {
+      "id": 1,
+      "r": 2,
+      "c": 4
+    },
+    {
+      "id": 1,
+      "r": 3,
+      "c": 4
+    },
+    {
+      "id": 1,
+      "r": 4,
+      "c": 4
+    },
+    {
+      "id": 1,
+      "r": 5,
+      "c": 4
+    }
+  ],
+  "nextStationId": 2,
+  "lines": [],
+  "schedules": [],
+  "trainClasses": [
+    {
+      "id": 1,
+      "name": "High-Speed",
+      "speed": 1
+    },
+    {
+      "id": 2,
+      "name": "Express",
+      "speed": 0.8
+    },
+    {
+      "id": 3,
+      "name": "Local",
+      "speed": 0.6
+    },
+    {
+      "id": 4,
+      "name": "Cargo",
+      "speed": 0.5
+    }
+  ],
+  "flatland line": {
+    "agent_positions": [],
+    "agent_directions": [],
+    "agent_targets": [],
+    "agent_speeds": []
+  },
+  "flatland timetable": {
+    "earliest_departures": [],
+    "latest_arrivals": [],
+    "max_episode_steps": 0
+  }
+}
