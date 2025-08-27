@@ -25,7 +25,7 @@ from src.configs.EnvConfig import FlatlandEnvConfig
 
 class PPOLearner():
     """
-    Learner class for the PPO Controller.
+    Learner class for the PPO Algorithm.
     """
     def __init__(self, controller_config: PPOControllerConfig, learner_config: Dict, env_config: FlatlandEnvConfig, device: str = None) -> None:
         # Initialise environment and set controller / learning parameters
@@ -75,7 +75,7 @@ class PPOLearner():
         wandb.init(project='AI4REALNET-T3.4', entity='CLS-FHNW', config=learner_config, reinit=True)
         wandb.run.define_metric('episodes/*', step_metric='episode')
         wandb.run.define_metric('train/*', step_metric='update_step')
-        wandb.run.name = learner_config['run_name']
+        wandb.run.name = f"{learner_config['run_name']}_PPO"
         wandb.run.save()
         wandb.watch(self.controller.actor_network, log='all')
         wandb.watch(self.controller.critic_network, log='all')
@@ -90,7 +90,7 @@ class PPOLearner():
 
     def async_run(self) -> None:
         """
-        Asynchronous PPO training run.
+        Asynchronous PPO training run. # TODO: fix this into a synchronous run, asynchronous is for IMPALA!
         """
         # Broadcast initial weights to all workers, one for each worker, ensuring they start with the same model parameters
         # TODO: check if this is desirable (different initial starting points could be beneficial)
@@ -98,12 +98,14 @@ class PPOLearner():
                             self.controller.critic_network.state_dict())
         for worker in range(self.n_workers):
             self.weights_queue.put(controller_state)
-            # TODO: ensure that workers only u
+            # TODO: ensure that workers only update when there are new weights
 
         # initialise learning rollout
         self.rollout = MultiAgentRolloutBuffer(n_agents=self.env_config.n_agents)
 
         # create and start workers
+        # TODO: add device specification for the workers
+        mp.set_start_method('spawn')  # parallelisation of rollout gathering - spawn is safer for pytorch
         workers: List[PPOWorker] = []
         for worker_id in range(self.n_workers):
             worker = PPOWorker(worker_id=worker_id,
@@ -201,51 +203,6 @@ class PPOLearner():
                            device='cpu')
         rollout = worker.run()
         queue.put(rollout)
-    
-    # TODO: clean up
-    # def gather_rollout(self) -> MultiAgentRolloutBuffer:
-    #     """
-    #     Rollout function to gather experience tuples for the PPO agent.
-        
-    #     :return: List of transitions collected during the rollout.
-    #     """
-    #     # parallelisation of rollout gathering - spawn is safer for pytorch
-    #     # TODO: add device specification for the workers
-    #     mp.set_start_method('spawn')
-    #     rollout_queue: mp.Queue = mp.Queue()
-    #     logging_queue: mp.Queue = mp.Queue()
-    #     processes: List[mp.Process] = []
-    #     for _ in range(self.n_workers):
-    #         process = mp.Process(target=self.worker_entry, args=(logging_queue, rollout_queue))
-    #         processes.append(process)
-    #         process.start()
-
-    #     # Monitor logging queue for worker information
-    #     finished_workers: int = 0
-    #     rollouts: List[MultiAgentRolloutBuffer] = []
-
-    #     while finished_workers < self.n_workers:
-    #         if not logging_queue.empty(): 
-    #             # send logging information to wandb
-    #             pass
-    #         while not rollout_queue.empty():
-    #             # append rollout to the rollout list and increment finished workers
-    #             pass
-
-    #         # avoid busy waiting
-    #         time.sleep(0.05)
-
-    
-
-    #     rollouts: List[MultiAgentRolloutBuffer] = [rollout_queue.get() for _ in range(self.n_workers)]
-
-    #     for process in processes:
-    #         process.join()
-
-    #     # Combine rollouts from all workers
-    #     combined_rollout: MultiAgentRolloutBuffer = MultiAgentRolloutBuffer.combine_rollouts(rollouts)
-
-    #     return combined_rollout
 
 
     def _build_optimizer(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
