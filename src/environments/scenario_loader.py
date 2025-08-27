@@ -67,4 +67,6 @@ def load_scenario_from_json(scenario_path: str) -> RailEnv:
         timetable_generator = timetable_generator_from_timetable(timetable),
     )
 
+    env.stations = data['stations']
+
     return env
