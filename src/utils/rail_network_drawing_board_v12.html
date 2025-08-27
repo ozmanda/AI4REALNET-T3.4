@@ -1,0 +1,1903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rail Network Drawing Board - v9 Final</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding-top: 10px; background-color: #f4f7f6; color: #333; }
+        h1 { color: #2c3e50; margin-bottom: 10px; font-size: 1.8em; }
+        .top-controls-wrapper { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: 90%; }
+        .controls-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; padding: 12px 15px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+        label { margin-right: 4px; font-size: 0.85em; color: #555; }
+        input[type="number"], input[type="text"], select { width: 50px; padding: 6px 8px; border: 1px solid #d1d9e6; border-radius: 4px; font-size: 0.85em; transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out; }
+        input[type="text"], select { width: auto; }
+        input[type="number"]:focus, input[type="text"]:focus, select:focus { border-color: #007bff; box-shadow: 0 0 0 2px rgba(0,123,255,0.25); outline: none; }
+        button { padding: 8px 15px; font-size: 0.85em; font-weight: 500; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px; transition: background-color 0.2s ease-in-out, transform 0.1s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        button:hover:not(:disabled) { background-color: #0056b3; transform: translateY(-1px); }
+        button:active:not(:disabled) { transform: translateY(0px); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; transform: translateY(0); }
+        button.secondary { background-color: #6c757d; }
+        button.secondary:hover:not(:disabled) { background-color: #545b62; }
+        button.danger { background-color: #dc3545; }
+        button.danger:hover:not(:disabled) { background-color: #c82333; }
+        .controls-group span { font-size: 0.85em; font-weight: 500; margin-right: 5px;}
+        #railCanvas { border: 1px solid #d1d9e6; margin-top: 8px; cursor: crosshair; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-radius: 4px; background-color: #fff; }
+        #railCanvas.is-selecting { z-index: 1000; position: relative; } /* To bring it above the overlay */
+
+        .io-section { margin-top:10px; width: 90%; max-width: 950px; }
+        .io-section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;}
+        .io-section-header h3 { color: #2c3e50; margin-bottom: 0; font-size: 1em; }
+        textarea.io-text, textarea.line-editor-stations { width: calc(100% - 24px); white-space: pre-wrap; word-wrap: break-word; background-color: #ffffff; border: 1px solid #d1d9e6; padding: 10px 12px; min-height: 40px; max-height: 100px; overflow-y: auto; border-radius: 4px; font-family: 'Courier New', Courier, monospace; font-size: 0.8em; box-shadow: inset 0 1px 2px rgba(0,0,0,0.04); }
+        .info, .tooltip-main { font-size: 0.85em; color: #555; margin-top: 4px; margin-bottom: 8px; max-width: 90%; text-align: center;}
+        .tooltip-main { background-color: #fff; padding: 4px 8px; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        #consolidatedFileInput { display: none; }
+        
+        /* Full Screen Overlay */
+        #pageOverlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.65);
+            z-index: 998; /* Sits below the focused elements */
+        }
+
+        /* --- Right Side Panel Styles --- */
+        #rightPanelWrapper { position: fixed; right: 50px; top: 100px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+        #contextPalette { width: 380px; padding: 10px; background-color: #ffffff; border: 1px solid #d1d9e6; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: none; }
+        #linesManagerPanel { width: 950px; padding: 15px 20px; background-color: #ffffff; border: 1px solid #d1d9e6; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: none; transition: height 0.3s ease-in-out; overflow: hidden; }
+        #linesManagerPanel.is-selecting { z-index: 1000; position: relative; height: 52px; } /* Minimized state */
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: #2c3e50; }
+        .panel-header-title { flex-grow: 1; text-align: center; font-size: 1.1em; font-weight: 600; }
+        .panel-close-button { cursor: pointer; padding: 2px 6px; font-size: 1.2em; line-height: 1; border-radius: 3px; margin-left: 5px; }
+        .panel-close-button:hover { background-color: #e9ecef; }
+
+        /* Palette Styles */
+        #palettePiecesContainer { display: flex; flex-wrap: wrap; gap: 6px; max-height: calc(100vh - 280px); overflow-y: auto; margin-bottom: 10px; justify-content: center; }
+        .palette-item-canvas { width: 25px; height: 25px; border: 1px solid #ccc; cursor: pointer; transition: border-color 0.2s; }
+        .palette-item-canvas:hover { border-color: #007bff; }
+        #paletteActionsContainer { display: flex; flex-direction: column; gap: 6px; }
+        #paletteActionsContainer button { width: 100%; }
+        
+        /* Operations Manager Styles */
+        #linesManagerPanel .panel-header { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
+        .ops-manager-tabs { display: flex; gap: 5px; margin-bottom: 15px; border-bottom: 1px solid #dee2e6; }
+        .ops-manager-tab { padding: 8px 15px; cursor: pointer; border: 1px solid transparent; border-bottom: none; border-radius: 5px 5px 0 0; background-color: #f1f3f5; color: #333; }
+        .ops-manager-tab.active { background-color: #fff; border-color: #dee2e6; border-bottom-color: #fff; margin-bottom: -1px; }
+
+        #linesListContainer, #schedulesListContainer, #trainsListContainer { max-height: 400px; overflow-y: auto; }
+        
+        .list-item { display: flex; align-items: center; justify-content: space-between; padding: 8px; border-radius: 4px; margin-bottom: 5px; background-color: #f8f9fa; }
+        .list-item:nth-child(odd) { background-color: #f1f3f5; }
+        .list-item-main-content { display: flex; align-items: center; gap: 8px; }
+        .list-item-name { font-weight: bold; }
+        .list-item-details { font-family: monospace; font-size: 0.9em; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 10px; flex-grow: 1;}
+        .list-item-actions { display: flex; gap: 5px; }
+        .list-item-actions button { padding: 4px 8px; font-size: 0.8em; }
+        .reorder-button {
+            padding: 0 5px;
+            font-size: 1em;
+            line-height: 1;
+            background-color: transparent;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            transition: color 0.2s ease-in-out;
+        }
+        .reorder-button:hover:not(:disabled) {
+            color: #2c3e50;
+            background-color: transparent; /* Explicitly keep background transparent */
+        }
+        .reorder-button:disabled {
+            color: #e0e0e0;
+            cursor: not-allowed;
+        }
+
+        
+        #lineEditor, #scheduleEditor, #trainEditor { display: none; }
+        .editor-field { margin-bottom: 10px; }
+        .editor-field label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 0.9em; }
+        .line-editor-stations-wrapper { display: flex; align-items: center; gap: 10px; }
+        .line-editor-stations { flex-grow: 1; }
+
+        .schedule-editor-top-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 20px; margin-bottom: 15px; }
+        .schedule-editor-top-grid .editor-field { margin-bottom: 0; }
+        .shift-control { display: flex; align-items: flex-end; gap: 5px; }
+        .shift-control input { width: 70px; }
+        .shift-control button { height: 30.5px; }
+        
+        #scheduleStopsTable { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        #scheduleStopsTable th, #scheduleStopsTable td { padding: 6px 8px; border: 1px solid #d1d9e6; text-align: center; font-size: 0.85em; vertical-align: middle; }
+        #scheduleStopsTable th { background-color: #e9ecef; }
+        #scheduleStopsTable td input[type="number"] { width: 60px; text-align: center; padding: 4px; }
+        #scheduleStopsTable td input:disabled { background-color: #f1f3f5; color: #6c757d; cursor: not-allowed; }
+        .calculated-value { color: #555; font-style: italic; }
+        .distance-value { font-size: 0.9em; color: #6c757d; }
+        .exceeded-constraint { color: #dc3545; font-weight: bold; }
+        .validation-warning { color: #dc3545; font-size: 0.8em; margin-left: 10px; font-weight: bold; }
+
+        .train-editor-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 15px; align-items: flex-end; }
+        
+        /* Station Selection Bar Styles */
+        #lineSelectionBar {
+            display: none; /* Hidden by default */
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(44, 62, 80, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            z-index: 1001; /* Above canvas AND overlay */
+            align-items: center;
+            gap: 15px;
+            font-size: 0.9em;
+        }
+        #lineSelectionBar button { font-size: 0.8em; padding: 6px 12px; }
+        #selectionBarInfo { font-weight: 500; }
+        
+        /* Collapsible Data Section */
+        #dataContainer { width: 90%; max-width: 950px; margin-top: 20px; border: 1px solid #d1d9e6; border-radius: 8px; background-color: #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.07); overflow: hidden; }
+        #dataContainerHeader { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; cursor: pointer; background-color: #f8f9fa; }
+        #dataContainerHeader:hover { background-color: #e9ecef; }
+        #dataContainerHeader h3 { margin: 0; font-size: 1.1em; color: #2c3e50; }
+        #dataToggleIndicator { font-size: 1em; transition: transform 0.2s ease-in-out; }
+        #dataToggleIndicator.expanded { transform: rotate(90deg); }
+        #dataContainerContent { padding: 0 15px 15px 15px; max-height: 1000px; /* Large value for expanded state */ overflow-y: auto; transition: max-height 0.4s ease-in-out, padding 0.3s ease-in-out; }
+        #dataContainerContent.collapsed { max-height: 0; padding-top: 0; padding-bottom: 0; }
+        #dataContainerContent .io-section:first-child { margin-top: 15px; }
+
+    </style>
+</head>
+<body>
+    <div id="pageOverlay"></div>
+    <h1>Rail Network Drawing Board</h1>
+    <div id="gridSetupControls" class="controls-group">
+        <label for="rows">Rows:</label> <input type="number" id="rows" value="15" min="3" max="100">
+        <label for="cols">Cols:</label> <input type="number" id="cols" value="20" min="3" max="100">
+        <label for="cellSize">Cell (px):</label> <input type="number" id="cellSize" value="30" min="10" max="100">
+        <button id="initGridButton">Initialize/Resize</button>
+        <button id="clearGridButton" class="secondary">Clear Grid</button>
+    </div>
+    <div class="top-controls-wrapper">
+        <div id="historyControls" class="controls-group">
+            <span>History:</span>
+            <button id="undoButton" disabled>Undo (Q)</button>
+            <button id="redoButton" disabled>Redo (W)</button>
+        </div>
+        <div id="consolidatedIOControls" class="controls-group">
+            <span>File I/O:</span>
+            <button id="importAllFileButtonTrigger" title="Import Grid, Overpasses & Stations from JSON File">Import All (.json)</button>
+            <input type="file" id="consolidatedFileInput" accept=".json">
+            <button id="exportAllJsonButton" title="Download Grid, Overpasses & Stations as JSON File">Export All (.json)</button>
+        </div>
+        <div id="operationsControls" class="controls-group">
+             <button id="openOperationsManagerButton">Lines & Schedules</button>
+        </div>
+        <div id="flatlandControls" class="controls-group">
+            <button id="flatlandDownloadButton">Flatland Download</button>
+       </div>
+    </div>
+
+    <p class="info">LClick+Drag: Draw, RClick+Drag: Erase. Click: Select. Keys (Global): Q=Undo, W=Redo. Keys (Selected): R=Rotate, F=Flip, S=Station, D=Rename, C=Overpass, X/Y=Cycle Type, Arrows=Move.</p>
+    <div id="tooltipMain" class="tooltip-main" style="visibility: hidden;">Selected: None</div>
+    <canvas id="railCanvas"></canvas>
+
+    <!-- Line Station Selection Bar -->
+    <div id="lineSelectionBar">
+        <span id="selectionBarInfo">Click on stations on the map to add them to the line...</span>
+        <button id="undoStationSelectionButton" class="secondary">Undo Last</button>
+        <button id="finishStationSelectionButton">Finish Selection</button>
+    </div>
+
+    <!-- Right Side Panels Wrapper -->
+    <div id="rightPanelWrapper">
+        <div id="contextPalette">
+            <div class="panel-header" id="paletteHeader">
+                <span class="panel-header-title" id="paletteHeaderTitle">Cell Actions</span>
+                <span id="closePaletteButton" class="panel-close-button" title="Close Palette">&times;</span>
+            </div>
+            <div id="palettePiecesContainer"></div>
+            <div id="paletteActionsContainer">
+                <button id="toggleStationButton" disabled>Toggle Station (S)</button>
+                <button id="toggleOverpassButton" disabled>Toggle Overpass (C)</button>
+                <button id="renameStationButton" disabled>Rename Station (D)</button>
+                <button id="rotatePieceButton" disabled>Rotate Piece (R)</button>
+                <button id="flipPieceButton" disabled>Flip Piece (F)</button>
+            </div>
+        </div>
+
+        <div id="linesManagerPanel">
+            <div class="panel-header">
+                <span id="operationsModalTitle" class="panel-header-title">Operations Manager</span>
+                <span id="closeLinesManagerButton" class="panel-close-button" title="Close Manager">&times;</span>
+            </div>
+
+            <div class="ops-manager-tabs">
+                <button id="linesTabButton" class="ops-manager-tab active">Lines</button>
+                <button id="schedulesTabButton" class="ops-manager-tab">Schedules</button>
+                <button id="trainsTabButton" class="ops-manager-tab">Trains</button>
+            </div>
+
+            <div id="linesManagerView">
+                <div id="linesListView">
+                    <div style="margin-bottom: 15px; display:flex; justify-content: flex-end;">
+                        <button id="newLineButton">New Line</button>
+                    </div>
+                    <div id="linesListContainer"></div>
+                </div>
+                <div id="lineEditor">
+                    <h3 id="lineEditorTitle">Edit Line</h3>
+                    <input type="hidden" id="lineIdInput">
+                    <div class="editor-field">
+                        <label for="lineNameInput">Line Name:</label>
+                        <input type="text" id="lineNameInput" placeholder="e.g., U1, Express Line">
+                    </div>
+                    <div class="editor-field">
+                        <label for="lineStationsInput">Station IDs (comma-separated):</label>
+                        <div class="line-editor-stations-wrapper">
+                             <textarea id="lineStationsInput" class="line-editor-stations" rows="2" placeholder="e.g., 1, 5, 2, 8"></textarea>
+                             <button id="selectStationsOnMapButton" class="secondary" title="Select stations by clicking them on the map">Select on Map</button>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                        <button id="cancelLineEditButton" class="secondary">Cancel</button>
+                        <button id="saveLineButton">Save Line</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="schedulesManagerView" style="display: none;">
+                <div id="schedulesListView">
+                    <div style="margin-bottom: 15px; display:flex; justify-content: flex-end;">
+                        <button id="newScheduleButton">New Schedule</button>
+                    </div>
+                    <div id="schedulesListContainer"></div>
+                </div>
+                <div id="scheduleEditor">
+                    <h3 id="scheduleEditorTitle">Edit Schedule</h3>
+                    <input type="hidden" id="scheduleIdInput">
+                    <div class="schedule-editor-top-grid">
+                        <div class="editor-field">
+                            <label for="scheduleNameInput">Schedule Name:</label>
+                            <input type="text" id="scheduleNameInput" placeholder="e.g., U1 Weekday">
+                        </div>
+                        <div class="editor-field">
+                            <label for="scheduleLineSelect">Line:</label>
+                            <select id="scheduleLineSelect"></select>
+                        </div>
+                         <div class="editor-field">
+                            <label for="scheduleTrainClassSelect">Train Class:</label>
+                            <select id="scheduleTrainClassSelect"></select>
+                        </div>
+                        <div class="editor-field" style="grid-column: 1;">
+                            <label for="scheduleTravelFactorInput">Travel Factor:</label>
+                            <input type="number" id="scheduleTravelFactorInput" value="1.1" step="0.05" min="1">
+                        </div>
+                         <div class="shift-control" style="grid-column: 2;">
+                           <div class="editor-field">
+                               <label for="scheduleShiftInput">Shift Amount:</label>
+                               <input type="number" id="scheduleShiftInput" value="10" step="1">
+                           </div>
+                           <button id="scheduleShiftButton" class="secondary">Shift</button>
+                        </div>
+                    </div>
+                    <table id="scheduleStopsTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Station ID</th>
+                                <th>Distance</th>
+                                <th>Travel Time</th>
+                                <th>Arrival</th>
+                                <th>Departure</th>
+                                <th>Latest Arrival</th>
+                                <th>Earliest Departure</th>
+                                <th>Dwell Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scheduleStopsTableBody">
+                        </tbody>
+                    </table>
+                     <div style="display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 20px;">
+                        <span id="scheduleValidationWarning" class="validation-warning" style="display: none;">(!) Please fix all validation errors.</span>
+                        <button id="cancelScheduleEditButton" class="secondary">Cancel</button>
+                        <button id="saveScheduleButton">Save Schedule</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="trainsManagerView" style="display: none;">
+                <div id="trainsListView">
+                    <div style="margin-bottom: 15px; display:flex; justify-content: flex-end;">
+                        <button id="newTrainButton">New Train Class</button>
+                    </div>
+                    <div id="trainsListContainer"></div>
+                </div>
+                <div id="trainEditor">
+                     <h3 id="trainEditorTitle">Edit Train Class</h3>
+                     <input type="hidden" id="trainIdInput">
+                     <div class="train-editor-grid">
+                         <div class="editor-field">
+                             <label for="trainNameInput">Train Class Name:</label>
+                             <input type="text" id="trainNameInput" placeholder="e.g., Regional">
+                         </div>
+                         <div class="editor-field">
+                             <label for="trainSpeedInput">Speed (0.1 to 1.0):</label>
+                             <input type="number" id="trainSpeedInput" value="1.0" step="0.1" min="0.1" max="1">
+                         </div>
+                     </div>
+                     <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                        <button id="cancelTrainEditButton" class="secondary">Cancel</button>
+                        <button id="saveTrainButton">Save Train</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    
+    <div id="dataContainer">
+        <div id="dataContainerHeader">
+            <h3>Raw Data Export/Import</h3>
+            <span id="dataToggleIndicator">▶</span>
+        </div>
+        <div id="dataContainerContent" class="collapsed">
+            <div class="io-section">
+                <div class="io-section-header">
+                    <h3>Grid Data (Updated Dynamically):</h3>
+                    <div><button id="importGridTextButton" title="Import Grid from Text Area">Import Text</button></div>
+                </div>
+                <textarea id="importExportText" class="io-text" rows="4"></textarea>
+            </div>
+            <div class="io-section">
+                <div class="io-section-header">
+                    <h3>Overpass Data (Updated Dynamically):</h3>
+                    <div><button id="importOverpassTextButton" title="Import Overpasses from Text Area">Import Text</button></div>
+                </div>
+                <textarea id="overpassImportExportText" class="io-text" rows="2"></textarea>
+            </div>
+            <div class="io-section">
+                <div class="io-section-header">
+                    <h3>Station Data (Updated Dynamically):</h3>
+                    <div><button id="importStationTextButton" title="Import Stations from Text Area">Import Text</button></div>
+                </div>
+                <textarea id="stationImportExportText" class="io-text" rows="2"></textarea>
+            </div>
+        </div>
+    </div>
+
+
+<script>
+    // --- ELEMENT REFERENCES ---
+    const canvas = document.getElementById('railCanvas'); const ctx = canvas.getContext('2d');
+    const pageOverlay = document.getElementById('pageOverlay');
+    const importExportText = document.getElementById('importExportText'); const overpassImportExportText = document.getElementById('overpassImportExportText'); const stationImportExportText = document.getElementById('stationImportExportText');
+    const tooltipMain = document.getElementById('tooltipMain'); const consolidatedFileInput = document.getElementById('consolidatedFileInput');
+    const contextPalette = document.getElementById('contextPalette'); const palettePiecesContainer = document.getElementById('palettePiecesContainer'); const toggleStationButton = document.getElementById('toggleStationButton'); const toggleOverpassButton = document.getElementById('toggleOverpassButton'); const closePaletteButton = document.getElementById('closePaletteButton'); const renameStationButton = document.getElementById('renameStationButton'); const rotatePieceButton = document.getElementById('rotatePieceButton'); const flipPieceButton = document.getElementById('flipPieceButton');
+    const undoButton = document.getElementById('undoButton'); const redoButton = document.getElementById('redoButton');
+    const flatlandDownloadButton = document.getElementById('flatlandDownloadButton');
+    
+    // Operations Manager References
+    const openOperationsManagerButton = document.getElementById('openOperationsManagerButton');
+    const linesManagerPanel = document.getElementById('linesManagerPanel');
+    const closeLinesManagerButton = document.getElementById('closeLinesManagerButton');
+    const linesTabButton = document.getElementById('linesTabButton');
+    const schedulesTabButton = document.getElementById('schedulesTabButton');
+    const trainsTabButton = document.getElementById('trainsTabButton');
+    const linesManagerView = document.getElementById('linesManagerView');
+    const schedulesManagerView = document.getElementById('schedulesManagerView');
+    const trainsManagerView = document.getElementById('trainsManagerView');
+
+    // Lines Tab References
+    const linesListView = document.getElementById('linesListView');
+    const linesListContainer = document.getElementById('linesListContainer');
+    const newLineButton = document.getElementById('newLineButton');
+    const lineEditor = document.getElementById('lineEditor');
+    const lineEditorTitle = document.getElementById('lineEditorTitle');
+    const lineIdInput = document.getElementById('lineIdInput');
+    const lineNameInput = document.getElementById('lineNameInput');
+    const lineStationsInput = document.getElementById('lineStationsInput');
+    const saveLineButton = document.getElementById('saveLineButton');
+    const cancelLineEditButton = document.getElementById('cancelLineEditButton');
+    const selectStationsOnMapButton = document.getElementById('selectStationsOnMapButton');
+    const lineSelectionBar = document.getElementById('lineSelectionBar');
+    const selectionBarInfo = document.getElementById('selectionBarInfo');
+    const undoStationSelectionButton = document.getElementById('undoStationSelectionButton');
+    const finishStationSelectionButton = document.getElementById('finishStationSelectionButton');
+
+    // Schedules Tab References
+    const schedulesListView = document.getElementById('schedulesListView');
+    const schedulesListContainer = document.getElementById('schedulesListContainer');
+    const newScheduleButton = document.getElementById('newScheduleButton');
+    const scheduleEditor = document.getElementById('scheduleEditor');
+    const scheduleEditorTitle = document.getElementById('scheduleEditorTitle');
+    const scheduleIdInput = document.getElementById('scheduleIdInput');
+    const scheduleNameInput = document.getElementById('scheduleNameInput');
+    const scheduleLineSelect = document.getElementById('scheduleLineSelect');
+    const scheduleTrainClassSelect = document.getElementById('scheduleTrainClassSelect');
+    const scheduleTravelFactorInput = document.getElementById('scheduleTravelFactorInput');
+    const scheduleShiftInput = document.getElementById('scheduleShiftInput');
+    const scheduleShiftButton = document.getElementById('scheduleShiftButton');
+    const scheduleStopsTableBody = document.getElementById('scheduleStopsTableBody');
+    const saveScheduleButton = document.getElementById('saveScheduleButton');
+    const cancelScheduleEditButton = document.getElementById('cancelScheduleEditButton');
+    const scheduleValidationWarning = document.getElementById('scheduleValidationWarning');
+
+    // Trains Tab References
+    const trainsListView = document.getElementById('trainsListView');
+    const trainsListContainer = document.getElementById('trainsListContainer');
+    const newTrainButton = document.getElementById('newTrainButton');
+    const trainEditor = document.getElementById('trainEditor');
+    const trainEditorTitle = document.getElementById('trainEditorTitle');
+    const trainIdInput = document.getElementById('trainIdInput');
+    const trainNameInput = document.getElementById('trainNameInput');
+    const trainSpeedInput = document.getElementById('trainSpeedInput');
+    const saveTrainButton = document.getElementById('saveTrainButton');
+    const cancelTrainEditButton = document.getElementById('cancelTrainEditButton');
+
+    // Collapsible Data Section References
+    const dataContainerHeader = document.getElementById('dataContainerHeader');
+    const dataContainerContent = document.getElementById('dataContainerContent');
+    const dataToggleIndicator = document.getElementById('dataToggleIndicator');
+
+
+    // --- GLOBAL STATE ---
+    let numRows, numCols, cellSize;
+    let gridData = [];
+    let isDrawing = false, isErasing = false;
+    let lastCell = null;
+    let selectedCellCoords = null;
+    let nextStationId = 1;
+    let historyStack = [], historyIndex = -1;
+    let isEditingInOpsManager = false;
+    let isSelectingStationsForLine = false;
+    let lineBuilderData = { stations: [], originalStations: '' };
+
+    // --- DATA MODELS ---
+    let lines = [];
+    let schedules = []; 
+    let trainClasses = [ 
+        { id: 1, name: "High-Speed", speed: 1.0 }, 
+        { id: 2, name: "Express", speed: 0.8 }, 
+        { id: 3, name: "Local", speed: 0.6 },
+        { id: 4, name: "Cargo", speed: 0.5 }
+    ];
+
+    // --- CONSTANTS ---
+    const paletteCellSize = 25;
+    const CI = { EMPTY: 0, V_STRAIGHT: 32800, H_STRAIGHT: 1025, S_N_L: 32872, S_E_L: 17411, S_S_L: 37408, S_W_L: 3089, S_N_R: 34864, S_E_R: 1097, S_S_R: 49186, S_W_R: 5633, DIAMOND_X: 33825, SLIP_SW: 38433, SLIP_NW: 35889, SLIP_NE: 33897, SLIP_SE: 50211, DBL_SLIP_NW_SE: 52275, DBL_SLIP_NE_SW: 38505, SYM_S: 20994, SYM_W: 6672, SYM_N: 2136, SYM_E: 16458, DEAD_S: 8192, DEAD_W: 256, DEAD_N: 128, DEAD_E: 4, TURN_S_E: 16386, TURN_S_W: 4608, TURN_N_W: 2064, TURN_N_E: 72 };
+    const OVERPASS_BG_COLOR = '#d0d0d0'; 
+    const TILE_COLORS = { [CI.EMPTY]:'#e9ecef', [CI.V_STRAIGHT]:'#d4efdf', [CI.H_STRAIGHT]:'#d4efdf', [CI.S_N_L]:'#C1E1EC', [CI.S_E_L]:'#C1E1EC', [CI.S_S_L]:'#C1E1EC', [CI.S_W_L]:'#C1E1EC', [CI.S_N_R]:'#ADD8E6', [CI.S_E_R]:'#ADD8E6', [CI.S_S_R]:'#ADD8E6', [CI.S_W_R]:'#ADD8E6', [CI.DIAMOND_X]:'#fef9e7', [CI.SLIP_SW]:'#fcf3cf', [CI.SLIP_NW]:'#fcf3cf', [CI.SLIP_NE]:'#fcf3cf', [CI.SLIP_SE]:'#fcf3cf', [CI.DBL_SLIP_NW_SE]:'#fae5d3', [CI.DBL_SLIP_NE_SW]:'#fae5d3', [CI.SYM_S]:'#E6E6FA', [CI.SYM_W]:'#E6E6FA', [CI.SYM_N]:'#E6E6FA', [CI.SYM_E]:'#E6E6FA', [CI.DEAD_S]:'#fdebd0', [CI.DEAD_W]:'#fdebd0', [CI.DEAD_N]:'#fdebd0', [CI.DEAD_E]:'#fdebd0', [CI.TURN_S_E]:'#d6eaf8', [CI.TURN_S_W]:'#d6eaf8', [CI.TURN_N_W]:'#d6eaf8', [CI.TURN_N_E]:'#d6eaf8', default:'#e0e0e0' };
+    const STATION_BACKGROUND_COLOR = '#fffacd';
+    const INVALID_COLOR = 'rgba(255, 0, 0, 0.3)';
+    const STATION_PLATFORM_COLOR = '#dc3545'; 
+    const STATION_ID_COLOR = '#333333';
+    const SELECTION_HIGHLIGHT_COLOR = 'rgba(0, 123, 255, 0.4)';
+
+    const CYCLEABLE_CASE_INDEXES = [ CI.EMPTY, CI.V_STRAIGHT, CI.H_STRAIGHT, CI.S_N_L, CI.S_N_R, CI.DIAMOND_X, CI.SLIP_SW, CI.DBL_SLIP_NW_SE, CI.SYM_N, CI.DEAD_N, CI.TURN_N_E ];
+    const TILE_DEFINITIONS = {[CI.EMPTY]:{N:!1,E:!1,S:!1,W:!1},[CI.V_STRAIGHT]:{N:!0,E:!1,S:!0,W:!1},[CI.H_STRAIGHT]:{N:!1,E:!0,S:!1,W:!0},[CI.S_N_L]:{N:!0,E:!0,S:!0,W:!1},[CI.S_E_L]:{N:!1,E:!0,S:!0,W:!0},[CI.S_S_L]:{N:!0,E:!1,S:!0,W:!0},[CI.S_W_L]:{N:!0,E:!0,S:!1,W:!0},[CI.S_N_R]:{N:!0,E:!1,S:!0,W:!0},[CI.S_E_R]:{N:!0,E:!0,S:!1,W:!0},[CI.S_S_R]:{N:!0,E:!0,S:!0,W:!1},[CI.S_W_R]:{N:!1,E:!0,S:!0,W:!0},[CI.DIAMOND_X]:{N:!0,E:!0,S:!0,W:!0},[CI.SLIP_SW]:{N:!0,E:!0,S:!0,W:!0},[CI.SLIP_NW]:{N:!0,E:!0,S:!0,W:!0},[CI.SLIP_NE]:{N:!0,E:!0,S:!0,W:!0},[CI.SLIP_SE]:{N:!0,E:!0,S:!0,W:!0},[CI.DBL_SLIP_NW_SE]:{N:!0,E:!0,S:!0,W:!0},[CI.DBL_SLIP_NE_SW]:{N:!0,E:!0,S:!0,W:!0},[CI.SYM_S]:{N:!1,E:!0,S:!0,W:!0},[CI.SYM_W]:{N:!0,E:!1,S:!0,W:!0},[CI.SYM_N]:{N:!0,E:!0,S:!1,W:!0},[CI.SYM_E]:{N:!0,E:!0,S:!0,W:!1},[CI.DEAD_S]:{N:!1,E:!1,S:!0,W:!1},[CI.DEAD_W]:{N:!1,E:!1,S:!1,W:!0},[CI.DEAD_N]:{N:!0,E:!1,S:!1,W:!1},[CI.DEAD_E]:{N:!1,E:!0,S:!1,W:!1},[CI.TURN_S_E]:{N:!1,E:!0,S:!0,W:!1},[CI.TURN_S_W]:{N:!1,E:!1,S:!0,W:!0},[CI.TURN_N_W]:{N:!0,E:!1,S:!1,W:!0},[CI.TURN_N_E]:{N:!0,E:!0,S:!1,W:!1}};
+    const ROTATION_MAP = {[CI.V_STRAIGHT]:CI.H_STRAIGHT,[CI.H_STRAIGHT]:CI.V_STRAIGHT,[CI.S_N_L]:CI.S_E_L,[CI.S_E_L]:CI.S_S_L,[CI.S_S_L]:CI.S_W_L,[CI.S_W_L]:CI.S_N_L,[CI.S_N_R]:CI.S_E_R,[CI.S_E_R]:CI.S_S_R,[CI.S_S_R]:CI.S_W_R,[CI.S_W_R]:CI.S_N_R,[CI.SLIP_SW]:CI.SLIP_NW,[CI.SLIP_NW]:CI.SLIP_NE,[CI.SLIP_NE]:CI.SLIP_SE,[CI.SLIP_SE]:CI.SLIP_SW,[CI.DBL_SLIP_NW_SE]:CI.DBL_SLIP_NE_SW,[CI.DBL_SLIP_NE_SW]:CI.DBL_SLIP_NW_se,[CI.SYM_S]:CI.SYM_W,[CI.SYM_W]:CI.SYM_N,[CI.SYM_N]:CI.SYM_E,[CI.SYM_E]:CI.SYM_S,[CI.DEAD_S]:CI.DEAD_W,[CI.DEAD_W]:CI.DEAD_N,[CI.DEAD_N]:CI.DEAD_E,[CI.DEAD_E]:CI.DEAD_S,[CI.TURN_S_E]:CI.TURN_S_W,[CI.TURN_S_W]:CI.TURN_N_W,[CI.TURN_N_W]:CI.TURN_N_E,[CI.TURN_N_E]:CI.TURN_S_E};
+    const FLIP_MAP = {[CI.S_N_L]:CI.S_S_R,[CI.S_S_R]:CI.S_N_L,[CI.S_E_L]:CI.S_W_R,[CI.S_W_R]:CI.S_E_L,[CI.S_S_L]:CI.S_N_R,[CI.S_N_R]:CI.S_S_L,[CI.S_W_L]:CI.S_E_R,[CI.S_E_R]:CI.S_W_L,[CI.DBL_SLIP_NW_SE]:CI.DBL_SLIP_NE_SW,[CI.DBL_SLIP_NE_SW]:CI.DBL_SLIP_NW_SE};
+
+    // --- Pathfinding Constants ---
+    const D = { N: 'N', E: 'E', S: 'S', W: 'W' };
+    const FLATLAND_DIRECTION = { N: 0, E: 1, S: 2, W: 3 };
+    const OPPOSITE_DIRECTION = { [D.N]: D.S, [D.S]: D.N, [D.E]: D.W, [D.W]: D.E };
+    const DIRECTION_DELTA = { [D.N]: { r: -1, c: 0 }, [D.S]: { r: 1, c: 0 }, [D.E]: { r: 0, c: 1 }, [D.W]: { r: 0, c: -1 } };
+    const TRANSITION_MAP = {
+        [CI.V_STRAIGHT]:      { [D.N]: [D.S], [D.S]: [D.N] },
+        [CI.H_STRAIGHT]:      { [D.E]: [D.W], [D.W]: [D.E] },
+        [CI.TURN_N_E]:        { [D.N]: [D.E], [D.E]: [D.N] },
+        [CI.TURN_S_E]:        { [D.S]: [D.E], [D.E]: [D.S] },
+        [CI.TURN_S_W]:        { [D.S]: [D.W], [D.W]: [D.S] },
+        [CI.TURN_N_W]:        { [D.N]: [D.W], [D.W]: [D.N] },
+        [CI.DEAD_N]:          { [D.S]: [] },
+        [CI.DEAD_E]:          { [D.W]: [] },
+        [CI.DEAD_S]:          { [D.N]: [] },
+        [CI.DEAD_W]:          { [D.E]: [] },
+        [CI.DIAMOND_X]:       { [D.N]: [D.S], [D.S]: [D.N], [D.E]: [D.W], [D.W]: [D.E] },
+        [CI.S_N_R]:           { [D.S]: [D.N], [D.N]: [D.S, D.W], [D.W]: [D.N] },
+        [CI.S_E_R]:           { [D.W]: [D.E], [D.E]: [D.W, D.N], [D.N]: [D.E] },
+        [CI.S_S_R]:           { [D.N]: [D.S], [D.S]: [D.N, D.E], [D.E]: [D.S] },
+        [CI.S_W_R]:           { [D.E]: [D.W], [D.W]: [D.E, D.S], [D.S]: [D.W] },
+        [CI.S_N_L]:           { [D.S]: [D.N], [D.N]: [D.S, D.E], [D.E]: [D.N] },
+        [CI.S_E_L]:           { [D.W]: [D.E], [D.E]: [D.W, D.S], [D.S]: [D.E] },
+        [CI.S_S_L]:           { [D.N]: [D.S], [D.S]: [D.N, D.W], [D.W]: [D.S] },
+        [CI.S_W_L]:           { [D.E]: [D.W], [D.W]: [D.E, D.N], [D.N]: [D.W] },
+        [CI.SYM_N]:           { [D.N]: [D.E, D.W], [D.E]: [D.N], [D.W]: [D.N] },
+        [CI.SYM_E]:           { [D.E]: [D.N, D.S], [D.N]: [D.E], [D.S]: [D.E] },
+        [CI.SYM_S]:           { [D.S]: [D.E, D.W], [D.E]: [D.S], [D.W]: [D.S] },
+        [CI.SYM_W]:           { [D.W]: [D.N, D.S], [D.N]: [D.W], [D.S]: [D.W] },
+        [CI.SLIP_SW]:         { [D.N]: [D.S], [D.S]: [D.N, D.W], [D.E]: [D.W], [D.W]: [D.E, D.S] },
+        [CI.SLIP_NW]:         { [D.S]: [D.N], [D.N]: [D.S, D.W], [D.E]: [D.W], [D.W]: [D.E, D.N] },
+        [CI.SLIP_NE]:         { [D.S]: [D.N], [D.N]: [D.S, D.E], [D.W]: [D.E], [D.E]: [D.W, D.N] },
+        [CI.SLIP_SE]:         { [D.N]: [D.S], [D.S]: [D.N, D.E], [D.W]: [D.E], [D.E]: [D.W, D.S] },
+        [CI.DBL_SLIP_NW_SE]:  { [D.N]: [D.S, D.W], [D.S]: [D.N, D.E], [D.E]: [D.W, D.S], [D.W]: [D.E, D.N] },
+        [CI.DBL_SLIP_NE_SW]:  { [D.N]: [D.S, D.E], [D.S]: [D.N, D.W], [D.E]: [D.W, D.N], [D.W]: [D.E, D.S] }
+    };
+
+    // --- History Management Functions ---
+    function saveState() { 
+        const state = { 
+            gridData: JSON.parse(JSON.stringify(gridData)), 
+            nextStationId: nextStationId, 
+            numRows: numRows, 
+            numCols: numCols, 
+            cellSize: cellSize, 
+            lines: JSON.parse(JSON.stringify(lines)),
+            schedules: JSON.parse(JSON.stringify(schedules)),
+            trainClasses: JSON.parse(JSON.stringify(trainClasses))
+        }; 
+        if (historyIndex < historyStack.length - 1) { historyStack = historyStack.slice(0, historyIndex + 1); } 
+        historyStack.push(state); historyIndex++; updateHistoryButtons(); 
+    }
+    function loadState(state) { 
+        gridData = JSON.parse(JSON.stringify(state.gridData)); 
+        nextStationId = state.nextStationId; 
+        lines = JSON.parse(JSON.stringify(state.lines)); 
+        schedules = state.schedules ? JSON.parse(JSON.stringify(state.schedules)) : [];
+        trainClasses = state.trainClasses ? JSON.parse(JSON.stringify(state.trainClasses)) : [ { id: 1, name: "High-Speed", speed: 1.0 }, { id: 2, name: "Express", speed: 0.8 }, { id: 3, name: "Local", speed: 0.6 }, { id: 4, name: "Cargo", speed: 0.5 }];
+        if (numRows !== state.numRows) document.getElementById('rows').value = state.numRows; 
+        if (numCols !== state.numCols) document.getElementById('cols').value = state.numCols; 
+        if (cellSize !== state.cellSize) document.getElementById('cellSize').value = state.cellSize; 
+        setupDimensions(); selectedCellCoords = null; updateSelectionUI(); validateGrid(); drawGrid(); exportAllDataToTextAreas(); updateHistoryButtons(); 
+    }
+    function undo() { if (historyIndex > 0) { historyIndex--; loadState(historyStack[historyIndex]); } }
+    function redo() { if (historyIndex < historyStack.length - 1) { historyIndex++; loadState(historyStack[historyIndex]); } }
+    function updateHistoryButtons() { undoButton.disabled = historyIndex <= 0; redoButton.disabled = historyIndex >= historyStack.length - 1; }
+
+    // --- Pathfinding Engine (BFS) ---
+    function findShortestPath(startStationId, endStationId) {
+        const startStationCells = [];
+        const endStationCells = new Set();
+        for (let r = 0; r < numRows; r++) {
+            for (let c = 0; c < numCols; c++) {
+                if (gridData[r][c].isStation) {
+                    if (gridData[r][c].stationId === startStationId) startStationCells.push({ r, c });
+                    if (gridData[r][c].stationId === endStationId) endStationCells.add(`${r},${c}`);
+                }
+            }
+        }
+        if (startStationCells.length === 0 || endStationCells.size === 0) return -1;
+        const queue = [];
+        const visited = new Set(); 
+        for (const stationCell of startStationCells) {
+            for (const exitDir of Object.values(D)) {
+                const delta = DIRECTION_DELTA[exitDir];
+                const nr = stationCell.r + delta.r;
+                const nc = stationCell.c + delta.c;
+                if (nr < 0 || nr >= numRows || nc < 0 || nc >= numCols) continue;
+                const neighborCell = gridData[nr][nc];
+                const neighborDef = TILE_DEFINITIONS[neighborCell.caseIndex];
+                const entryDirForNeighbor = OPPOSITE_DIRECTION[exitDir];
+                if (neighborDef && neighborDef[entryDirForNeighbor]) {
+                    const visitedKey = `${nr},${nc},${entryDirForNeighbor}`;
+                    if (!visited.has(visitedKey)) {
+                        queue.push({ r: nr, c: nc, dist: 1, cameFrom: entryDirForNeighbor });
+                        visited.add(visitedKey);
+                    }
+                }
+            }
+        }
+        while (queue.length > 0) {
+            const { r, c, dist, cameFrom } = queue.shift();
+            if (endStationCells.has(`${r},${c}`)) {
+                return dist;
+            }
+            const currentCell = gridData[r][c];
+            const validExits = TRANSITION_MAP[currentCell.caseIndex]?.[cameFrom];
+            if (!validExits) continue;
+            for (const exitDir of validExits) {
+                const delta = DIRECTION_DELTA[exitDir];
+                const nr = r + delta.r;
+                const nc = c + delta.c;
+                if (nr < 0 || nr >= numRows || nc < 0 || nc >= numCols) continue;
+                const nextCameFrom = OPPOSITE_DIRECTION[exitDir];
+                const visitedKey = `${nr},${nc},${nextCameFrom}`;
+                if (!visited.has(visitedKey)) {
+                    visited.add(visitedKey);
+                    queue.push({ r: nr, c: nc, dist: dist + 1, cameFrom: nextCameFrom });
+                }
+            }
+        }
+        return -1;
+    }
+
+    // --- FLATLAND EXPORT HELPERS ---
+    function getStationCoords(stationId) {
+        if (stationId == null) return null;
+        for (let r = 0; r < numRows; r++) {
+            for (let c = 0; c < numCols; c++) {
+                if (gridData[r][c].isStation && gridData[r][c].stationId === stationId) {
+                    return [r, c]; // Return as [row, col]
+                }
+            }
+        }
+        return null; // Station not found
+    }
+
+    function getDepartureDirection(startStationId, endStationId) {
+        const startStationCells = [];
+        const endStationCells = new Set();
+        for (let r = 0; r < numRows; r++) {
+            for (let c = 0; c < numCols; c++) {
+                if (gridData[r][c].isStation) {
+                    if (gridData[r][c].stationId === startStationId) startStationCells.push({ r, c });
+                    if (gridData[r][c].stationId === endStationId) endStationCells.add(`${r},${c}`);
+                }
+            }
+        }
+
+        if (startStationCells.length === 0 || endStationCells.size === 0) return -1; // No path possible
+
+        const queue = [];
+        const visited = new Set();
+
+        // Initial queue setup: find the first step out of the station
+        for (const stationCell of startStationCells) {
+            // Check all 4 directions from the station cell
+            for (const startDir of Object.keys(D)) { // D = {N, E, S, W}
+                const delta = DIRECTION_DELTA[startDir];
+                const nr = stationCell.r + delta.r;
+                const nc = stationCell.c + delta.c;
+
+                if (nr < 0 || nr >= numRows || nc < 0 || nc >= numCols) continue;
+                
+                const neighborCell = gridData[nr][nc];
+                if(neighborCell.isStation && neighborCell.stationId === startStationId) continue; // Don't move to another part of the same station
+
+                const neighborDef = TILE_DEFINITIONS[neighborCell.caseIndex];
+                const entryDirForNeighbor = OPPOSITE_DIRECTION[startDir];
+
+                // Check if the neighbor track piece connects back to the station
+                if (neighborDef && neighborDef[entryDirForNeighbor]) {
+                    const visitedKey = `${nr},${nc},${entryDirForNeighbor}`;
+                    if (!visited.has(visitedKey)) {
+                        // The `initialDir` is the crucial part we need to preserve
+                        queue.push({ r: nr, c: nc, cameFrom: entryDirForNeighbor, initialDir: startDir });
+                        visited.add(visitedKey);
+                    }
+                }
+            }
+        }
+
+        while (queue.length > 0) {
+            const { r, c, cameFrom, initialDir } = queue.shift();
+
+            // If we've arrived at the destination station, we've found the path and its initial direction
+            if (endStationCells.has(`${r},${c}`)) {
+                return FLATLAND_DIRECTION[initialDir]; // {N:0, E:1, S:2, W:3}
+            }
+
+            const currentCell = gridData[r][c];
+            const validExits = TRANSITION_MAP[currentCell.caseIndex]?.[cameFrom];
+            if (!validExits) continue;
+
+            for (const exitDir of validExits) {
+                const delta = DIRECTION_DELTA[exitDir];
+                const nr = r + delta.r;
+                const nc = c + delta.c;
+
+                if (nr < 0 || nr >= numRows || nc < 0 || nc >= numCols) continue;
+
+                const nextCameFrom = OPPOSITE_DIRECTION[exitDir];
+                const visitedKey = `${nr},${nc},${nextCameFrom}`;
+
+                if (!visited.has(visitedKey)) {
+                    visited.add(visitedKey);
+                    // Pass the `initialDir` along the path
+                    queue.push({ r: nr, c: nc, cameFrom: nextCameFrom, initialDir: initialDir });
+                }
+            }
+        }
+        return -1; // Path not found
+    }
+
+
+    // --- OPERATIONS MANAGER FUNCTIONS ---
+    function showOperationsTab(tabName) {
+        if (isEditingInOpsManager && isSelectingStationsForLine) {
+             alert("Please finish station selection before switching tabs.");
+             return;
+        }
+        if (isEditingInOpsManager) {
+             alert("Please save or cancel your current edits before switching tabs.");
+             return;
+        }
+        linesManagerView.style.display = 'none';
+        schedulesManagerView.style.display = 'none';
+        trainsManagerView.style.display = 'none';
+        linesTabButton.classList.remove('active');
+        schedulesTabButton.classList.remove('active');
+        trainsTabButton.classList.remove('active');
+        if (tabName === 'lines') {
+            linesTabButton.classList.add('active');
+            linesManagerView.style.display = 'block';
+            renderLinesList(); 
+            showLinesListView();
+        } else if (tabName === 'schedules') {
+            schedulesTabButton.classList.add('active');
+            schedulesManagerView.style.display = 'block';
+            renderSchedulesList();
+            showSchedulesListView();
+        } else if (tabName === 'trains') {
+            trainsTabButton.classList.add('active');
+            trainsManagerView.style.display = 'block';
+            renderTrainsList();
+            showTrainsListView();
+        }
+    }
+    function toggleOperationsManager() {
+        const isVisible = linesManagerPanel.style.display === 'block';
+        if (isVisible) {
+            closeOperationsManager();
+        } else {
+            if (selectedCellCoords) {
+                selectedCellCoords = null;
+                updateSelectionUI();
+                drawGrid();
+            }
+            if (linesTabButton.classList.contains('active')) {
+                showOperationsTab('lines');
+            } else if (schedulesTabButton.classList.contains('active')) {
+                showOperationsTab('schedules');
+            } else {
+                 showOperationsTab('trains');
+            }
+            linesManagerPanel.style.display = 'block';
+        }
+    }
+    function closeOperationsManager() {
+        if (isSelectingStationsForLine) {
+            endStationSelectionMode(true); // true = force cancel
+        }
+        linesManagerPanel.style.display = 'none';
+        setOpsManagerEditingMode(false);
+    }
+    function setOpsManagerEditingMode(isEditing) {
+        isEditingInOpsManager = isEditing;
+        // The cursor will be managed by the selection mode functions
+        if (!isSelectingStationsForLine) {
+            canvas.style.cursor = isEditing ? 'default' : 'crosshair';
+        }
+    }
+    
+    // --- LINES Functions ---
+    function startStationSelectionMode() {
+        isSelectingStationsForLine = true;
+        setOpsManagerEditingMode(true); 
+
+        // Store original state for cancellation
+        lineBuilderData.originalStations = lineStationsInput.value;
+        const currentStations = lineStationsInput.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && Number.isInteger(n));
+        lineBuilderData.stations = currentStations;
+
+        // Activate focus mode UI
+        pageOverlay.style.display = 'block';
+        linesManagerPanel.classList.add('is-selecting');
+        canvas.classList.add('is-selecting');
+        lineSelectionBar.style.display = 'flex';
+        canvas.style.cursor = 'pointer'; 
+        
+        if (selectedCellCoords) { selectedCellCoords = null; }
+        closeLinesManagerButton.style.pointerEvents = 'none';
+        
+        updateLineBuilderText();
+        drawGrid(); 
+    }
+
+    function endStationSelectionMode(isCancel = false) {
+        if (!isCancel) {
+            lineStationsInput.value = lineBuilderData.stations.join(', ');
+        } else {
+            lineStationsInput.value = lineBuilderData.originalStations;
+        }
+
+        isSelectingStationsForLine = false;
+        pageOverlay.style.display = 'none';
+        linesManagerPanel.classList.remove('is-selecting');
+        canvas.classList.remove('is-selecting');
+        lineSelectionBar.style.display = 'none';
+        canvas.style.cursor = 'default';
+        closeLinesManagerButton.style.pointerEvents = 'auto';
+        
+        drawGrid(); // To remove highlights
+    }
+
+    function updateLineBuilderText() {
+        if (lineBuilderData.stations.length === 0) {
+            selectionBarInfo.textContent = 'Click on stations on the map to add them...';
+        } else {
+            selectionBarInfo.textContent = `Path: ${lineBuilderData.stations.join(' → ')}`;
+        }
+        undoStationSelectionButton.disabled = lineBuilderData.stations.length === 0;
+    }
+    
+    function handleStationSelectionClick(r_click, c_click) {
+        const cell = gridData[r_click][c_click];
+        if (cell.isStation && cell.stationId != null) {
+            // Prevent adding the same station twice in a row
+            if(lineBuilderData.stations[lineBuilderData.stations.length - 1] === cell.stationId) {
+                return;
+            }
+            lineBuilderData.stations.push(cell.stationId);
+            updateLineBuilderText();
+            drawGrid();
+        }
+    }
+
+    function handleUndoStationSelection() {
+        lineBuilderData.stations.pop();
+        updateLineBuilderText();
+        drawGrid();
+    }
+
+
+    function renderLinesList() {
+        linesListContainer.innerHTML = '';
+        if (lines.length === 0) {
+            linesListContainer.innerHTML = '<p style="text-align:center; color: #666;">No lines created yet. Click "New Line" to start.</p>';
+            return;
+        }
+        lines.forEach((line, index) => {
+            const lineEl = document.createElement('div');
+            lineEl.className = 'list-item';
+            const disableUp = index === 0;
+            const disableDown = index === lines.length - 1;
+            lineEl.innerHTML = `
+                <div class="list-item-main-content">
+                    <button class="reorder-button" data-action="move-up" data-id="${line.id}" title="Move Up" ${disableUp ? 'disabled' : ''}>▲</button>
+                    <button class="reorder-button" data-action="move-down" data-id="${line.id}" title="Move Down" ${disableDown ? 'disabled' : ''}>▼</button>
+                    <span class="list-item-name">${line.name}</span> 
+                </div>
+                <span class="list-item-details">${line.stationIds.join(' → ')}</span> 
+                <div class="list-item-actions"> 
+                    <button data-action="test" data-id="${line.id}">Path Lengths</button> 
+                    <button data-action="edit" data-id="${line.id}">Edit</button> 
+                    <button data-action="copy" data-id="${line.id}" class="secondary">Copy</button> 
+                    <button data-action="reverse" data-id="${line.id}" class="secondary">Reverse</button> 
+                    <button data-action="delete" data-id="${line.id}" class="danger">Delete</button> 
+                </div>`;
+            linesListContainer.appendChild(lineEl);
+        });
+    }
+
+    function handleLinesListClick(e) {
+        const action = e.target.dataset.action;
+        const id = parseInt(e.target.dataset.id);
+        if (!action || !id) return;
+        const lineIndex = lines.findIndex(l => l.id === id);
+        if (lineIndex === -1) return;
+        
+        switch (action) {
+            case 'edit': showLineEditor(lines[lineIndex]); break;
+            case 'copy': const newLine = JSON.parse(JSON.stringify(lines[lineIndex])); newLine.id = Date.now(); newLine.name = `${lines[lineIndex].name} (Copy)`; lines.splice(lineIndex + 1, 0, newLine); renderLinesList(); saveState(); break;
+            case 'reverse': lines[lineIndex].stationIds.reverse(); renderLinesList(); saveState(); break;
+            case 'delete': if (window.confirm(`Are you sure you want to delete line "${lines[lineIndex].name}"? This will also delete any schedules that use it.`)) { lines.splice(lineIndex, 1); schedules = schedules.filter(s => s.lineId !== id); renderSchedulesList(); renderLinesList(); saveState(); } break;
+            case 'test': 
+                const line = lines[lineIndex];
+                if (line.stationIds.length < 2) { alert("Line needs at least two stations to calculate path lengths."); return; }
+                const results = [];
+                for (let i = 0; i < line.stationIds.length - 1; i++) {
+                    const startStationId = line.stationIds[i];
+                    const endStationId = line.stationIds[i + 1];
+                    const distance = findShortestPath(startStationId, endStationId);
+                    results.push(distance !== -1 ? `Shortest path from station ${startStationId} to ${endStationId} is ${distance} cells.` : `Path from station ${startStationId} to ${endStationId}: Not found.`);
+                }
+                alert(results.join('\n'));
+                break;
+            case 'move-up':
+                if (lineIndex > 0) { [lines[lineIndex], lines[lineIndex - 1]] = [lines[lineIndex - 1], lines[lineIndex]]; renderLinesList(); saveState(); }
+                break;
+            case 'move-down':
+                if (lineIndex < lines.length - 1) { [lines[lineIndex], lines[lineIndex + 1]] = [lines[lineIndex + 1], lines[lineIndex]]; renderLinesList(); saveState(); }
+                break;
+        }
+    }
+    function showLinesListView() { 
+        if(isSelectingStationsForLine) { endStationSelectionMode(true); } // Cancel on switch
+        lineEditor.style.display = 'none'; 
+        linesListView.style.display = 'block'; 
+        setOpsManagerEditingMode(false); 
+    }
+    function showLineEditor(line = null) { 
+        linesListView.style.display = 'none'; 
+        lineEditor.style.display = 'block'; 
+        setOpsManagerEditingMode(true); 
+        if (line) { 
+            lineEditorTitle.textContent = 'Edit Line'; 
+            lineIdInput.value = line.id; 
+            lineNameInput.value = line.name; 
+            lineStationsInput.value = line.stationIds.join(', '); 
+        } else { 
+            lineEditorTitle.textContent = 'Create New Line'; 
+            lineIdInput.value = ''; 
+            lineNameInput.value = ''; 
+            lineStationsInput.value = ''; 
+        } 
+    }
+    function saveLine() { 
+        if(isSelectingStationsForLine) { endStationSelectionMode(); }
+        const id = lineIdInput.value ? parseInt(lineIdInput.value) : null; 
+        const name = lineNameInput.value.trim() || 'Untitled Line'; 
+        const stationIds = lineStationsInput.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && Number.isInteger(n)); 
+        if (id) { 
+            const line = lines.find(l => l.id === id); 
+            if (line) { line.name = name; line.stationIds = stationIds; } 
+        } else { 
+            lines.push({ id: Date.now(), name, stationIds }); 
+        } 
+        renderLinesList(); 
+        showLinesListView(); 
+        saveState(); 
+    }
+    
+    // --- SCHEDULES Functions ---
+    function renderSchedulesList() {
+        schedulesListContainer.innerHTML = '';
+        if (schedules.length === 0) {
+            schedulesListContainer.innerHTML = '<p style="text-align:center; color: #666;">No schedules created yet. Click "New Schedule" to start.</p>';
+            return;
+        }
+        schedules.forEach((schedule, index) => {
+            const line = lines.find(l => l.id === schedule.lineId);
+            const train = trainClasses.find(t => t.id === schedule.trainClassId);
+            const details = `Line: ${line ? line.name : 'N/A'} | Train: ${train ? train.name : 'N/A'}`;
+            const disableUp = index === 0;
+            const disableDown = index === schedules.length - 1;
+
+            const el = document.createElement('div');
+            el.className = 'list-item';
+            el.innerHTML = `
+                 <div class="list-item-main-content">
+                    <button class="reorder-button" data-action="move-up" data-id="${schedule.id}" title="Move Up" ${disableUp ? 'disabled' : ''}>▲</button>
+                    <button class="reorder-button" data-action="move-down" data-id="${schedule.id}" title="Move Down" ${disableDown ? 'disabled' : ''}>▼</button>
+                    <span class="list-item-name">${schedule.name}</span> 
+                </div>
+                <span class="list-item-details">${details}</span> 
+                <div class="list-item-actions">
+                    <button data-action="edit" data-id="${schedule.id}">Edit</button> 
+                    <button data-action="copy" data-id="${schedule.id}" class="secondary">Copy</button> 
+                    <button data-action="delete" data-id="${schedule.id}" class="danger">Delete</button> 
+                </div>`;
+            schedulesListContainer.appendChild(el);
+        });
+    }
+
+    function handleSchedulesListClick(e) {
+        const action = e.target.dataset.action;
+        const id = parseInt(e.target.dataset.id);
+        if (!action || !id) return;
+        const scheduleIndex = schedules.findIndex(s => s.id === id);
+        if (scheduleIndex === -1) return;
+
+        switch (action) {
+            case 'edit': showScheduleEditor(schedules[scheduleIndex]); break;
+            case 'copy': const newSchedule = JSON.parse(JSON.stringify(schedules[scheduleIndex])); newSchedule.id = Date.now(); newSchedule.name = `${schedules[scheduleIndex].name} (Copy)`; schedules.splice(scheduleIndex + 1, 0, newSchedule); renderSchedulesList(); saveState(); break;
+            case 'delete': if (window.confirm(`Are you sure you want to delete schedule "${schedules[scheduleIndex].name}"?`)) { schedules.splice(scheduleIndex, 1); renderSchedulesList(); saveState(); } break;
+            case 'move-up':
+                if (scheduleIndex > 0) { [schedules[scheduleIndex], schedules[scheduleIndex - 1]] = [schedules[scheduleIndex - 1], schedules[scheduleIndex]]; renderSchedulesList(); saveState(); }
+                break;
+            case 'move-down':
+                if (scheduleIndex < schedules.length - 1) { [schedules[scheduleIndex], schedules[scheduleIndex + 1]] = [schedules[scheduleIndex + 1], schedules[scheduleIndex]]; renderSchedulesList(); saveState(); }
+                break;
+        }
+    }
+    function showSchedulesListView() {
+        scheduleEditor.style.display = 'none';
+        schedulesListView.style.display = 'block';
+        setOpsManagerEditingMode(false);
+    }
+    function showScheduleEditor(schedule = null) {
+        if (lines.length === 0) { alert("Please create a Line first before creating a Schedule."); return; }
+        if (trainClasses.length === 0) { alert("Please create a Train Class first before creating a Schedule."); return; }
+        schedulesListView.style.display = 'none';
+        scheduleEditor.style.display = 'block';
+        setOpsManagerEditingMode(true);
+
+        scheduleLineSelect.innerHTML = lines.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+        scheduleTrainClassSelect.innerHTML = trainClasses.map(t => `<option value="${t.id}">${t.name} (Speed: ${t.speed})</option>`).join('');
+
+        if (schedule) {
+            scheduleEditorTitle.textContent = 'Edit Schedule';
+            scheduleIdInput.value = schedule.id;
+            scheduleNameInput.value = schedule.name;
+            scheduleLineSelect.value = schedule.lineId;
+            scheduleTrainClassSelect.value = schedule.trainClassId;
+            scheduleTravelFactorInput.value = schedule.travelFactor || 1.1;
+        } else {
+            scheduleEditorTitle.textContent = 'Create New Schedule';
+            scheduleIdInput.value = '';
+            scheduleNameInput.value = '';
+            scheduleLineSelect.value = lines[0]?.id || '';
+            scheduleTrainClassSelect.value = trainClasses[0]?.id || '';
+            scheduleTravelFactorInput.value = 1.1;
+        }
+        populateScheduleStopsTable(schedule);
+    }
+    function populateScheduleStopsTable(schedule = null) {
+        scheduleStopsTableBody.innerHTML = '';
+        const selectedLineId = parseInt(scheduleLineSelect.value);
+        const line = lines.find(l => l.id === selectedLineId);
+        if (!line || !line.stationIds || line.stationIds.length === 0) {
+            scheduleStopsTableBody.innerHTML = '<tr><td colspan="9">Please select a valid line with stations.</td></tr>';
+            validateScheduleInputs();
+            return;
+        }
+        line.stationIds.forEach((stationId, index) => {
+            const stopData = schedule?.stops?.[index] || {};
+            const tr = document.createElement('tr');
+            tr.dataset.stationId = stationId;
+            
+            const latestArrivalVal = stopData.latestArrival ?? '';
+            const earliestDepartureVal = stopData.earliestDeparture ?? (index === 0 ? 0 : '');
+            const dwellTimeVal = stopData.dwellTime ?? ''; 
+
+            tr.innerHTML = `
+                <td>${index + 1}</td>
+                <td>${stationId}</td>
+                <td class="distance-value">-</td>
+                <td class="calculated-value travel-time-cell">-</td>
+                <td class="calculated-value arrival-time-cell">-</td>
+                <td class="calculated-value departure-time-cell">-</td>
+                <td><input type="number" class="latest-arrival-input" value="${latestArrivalVal}" min="0"></td>
+                <td><input type="number" class="earliest-departure-input" value="${earliestDepartureVal}" min="0"></td>
+                <td><input type="number" class="dwell-time-input" value="${dwellTimeVal}" min="0"></td>
+            `;
+            const latestArrivalInput = tr.querySelector('.latest-arrival-input');
+            const earliestDepartureInput = tr.querySelector('.earliest-departure-input');
+            const dwellTimeInput = tr.querySelector('.dwell-time-input');
+
+            if (index === 0) {
+                latestArrivalInput.disabled = true;
+                latestArrivalInput.placeholder = 'N/A';
+            }
+            if(index === line.stationIds.length - 1) {
+                earliestDepartureInput.disabled = true;
+                earliestDepartureInput.placeholder = 'N/A';
+                dwellTimeInput.disabled = true;
+                dwellTimeInput.placeholder = 'N/A';
+            }
+
+            const inputs = tr.querySelectorAll('input');
+            inputs.forEach(input => input.addEventListener('input', recalculateFullTimetable));
+            scheduleStopsTableBody.appendChild(tr);
+        });
+        recalculateFullTimetable();
+    }
+    function recalculateFullTimetable() {
+        const selectedTrainClassId = parseInt(scheduleTrainClassSelect.value);
+        const train = trainClasses.find(t => t.id === selectedTrainClassId);
+        const travelFactor = parseFloat(scheduleTravelFactorInput.value);
+        if(!train || isNaN(travelFactor)) return;
+        let departureTimeOfPreviousStop = 0;
+        const rows = scheduleStopsTableBody.querySelectorAll('tr');
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const distanceCell = row.querySelector('.distance-value');
+            const travelTimeCell = row.querySelector('.travel-time-cell');
+            const arrivalTimeCell = row.querySelector('.arrival-time-cell');
+            const departureTimeCell = row.querySelector('.departure-time-cell');
+            const latestArrivalInput = row.querySelector('.latest-arrival-input');
+            const earliestDepartureInput = row.querySelector('.earliest-departure-input');
+            const dwellTimeInput = row.querySelector('.dwell-time-input');
+            let arrivalTime = 0;
+            if (i === 0) {
+                arrivalTime = parseInt(earliestDepartureInput.value) || 0;
+                distanceCell.textContent = '-';
+                travelTimeCell.textContent = '-';
+            } else {
+                const prevStationId = parseInt(rows[i-1].dataset.stationId);
+                const currentStationId = parseInt(row.dataset.stationId);
+                const distance = findShortestPath(prevStationId, currentStationId);
+                if (distance === -1) {
+                    distanceCell.textContent = 'X'; travelTimeCell.textContent = 'N/A'; arrivalTimeCell.textContent = 'N/A'; departureTimeCell.textContent = 'N/A';
+                    row.style.backgroundColor = '#fee';
+                    departureTimeOfPreviousStop = Infinity; 
+                    continue;
+                }
+                row.style.backgroundColor = '';
+                distanceCell.textContent = distance;
+                const travelTime = (distance / train.speed) * travelFactor;
+                travelTimeCell.textContent = travelTime.toFixed(1);
+                arrivalTime = departureTimeOfPreviousStop + travelTime;
+            }
+            arrivalTimeCell.textContent = arrivalTime.toFixed(1);
+            const latestArrival = latestArrivalInput.value === '' ? null : parseInt(latestArrivalInput.value);
+            arrivalTimeCell.classList.toggle('exceeded-constraint', latestArrival !== null && arrivalTime > latestArrival);
+            const dwellTime = parseInt(dwellTimeInput.value) || 0; 
+            const naturalDeparture = arrivalTime + dwellTime;
+            const earliestDepartureVal = earliestDepartureInput.value === '' ? null : parseInt(earliestDepartureInput.value);
+            if (i === rows.length - 1) {
+                departureTimeCell.textContent = "-";
+                departureTimeOfPreviousStop = Infinity;
+            } else {
+                 const actualDeparture = Math.max(naturalDeparture, earliestDepartureVal || 0);
+                 departureTimeCell.textContent = actualDeparture.toFixed(1);
+                 departureTimeCell.classList.toggle('exceeded-constraint', earliestDepartureVal !== null && actualDeparture > earliestDepartureVal);
+                 departureTimeOfPreviousStop = actualDeparture;
+            }
+        }
+        validateScheduleInputs();
+    }
+    function handleShiftTimings() {
+        const shiftValue = parseInt(scheduleShiftInput.value);
+        if (isNaN(shiftValue)) { alert("Please enter a valid number to shift by."); return; }
+        scheduleStopsTableBody.querySelectorAll('tr').forEach(row => {
+            const latestArrivalInput = row.querySelector('.latest-arrival-input');
+            const earliestDepartureInput = row.querySelector('.earliest-departure-input');
+            if (!latestArrivalInput.disabled && latestArrivalInput.value !== '') {
+                latestArrivalInput.value = Math.max(0, parseInt(latestArrivalInput.value) + shiftValue);
+            }
+            if (!earliestDepartureInput.disabled && earliestDepartureInput.value !== '') {
+                 earliestDepartureInput.value = Math.max(0, parseInt(earliestDepartureInput.value) + shiftValue);
+            }
+        });
+        recalculateFullTimetable();
+    }
+    function validateScheduleInputs() {
+        let hasEmptyRequiredFields = false;
+        const rows = scheduleStopsTableBody.querySelectorAll('tr');
+
+        rows.forEach((row, index) => {
+            const latestArrivalInput = row.querySelector('.latest-arrival-input');
+            const earliestDepartureInput = row.querySelector('.earliest-departure-input');
+
+            // Rule: Not the first stop? Then Latest Arrival is required.
+            if (index > 0) {
+                if (latestArrivalInput.value === '') {
+                    hasEmptyRequiredFields = true;
+                }
+            }
+
+            // Rule: Not the last stop? Then Earliest Departure is required.
+            if (index < rows.length - 1) {
+                 if (earliestDepartureInput.value === '') {
+                    hasEmptyRequiredFields = true;
+                }
+            }
+        });
+
+        const hasTimingErrors = scheduleStopsTableBody.querySelector('.exceeded-constraint') !== null;
+        const isValid = !hasEmptyRequiredFields && !hasTimingErrors;
+
+        saveScheduleButton.disabled = !isValid;
+        scheduleValidationWarning.style.display = isValid ? 'none' : 'inline';
+        
+        if (hasEmptyRequiredFields) {
+            scheduleValidationWarning.textContent = "(!) Please fill all mandatory arrival/departure fields.";
+        } else if (hasTimingErrors) {
+            scheduleValidationWarning.textContent = "(!) Please fix red timing violations.";
+        }
+
+        return isValid;
+    }
+    function saveSchedule() {
+        if (!validateScheduleInputs()) { alert("Cannot save. Please fix all validation errors first."); return; }
+        const id = scheduleIdInput.value ? parseInt(scheduleIdInput.value) : Date.now();
+        const name = scheduleNameInput.value.trim() || 'Untitled Schedule';
+        const lineId = parseInt(scheduleLineSelect.value);
+        const trainClassId = parseInt(scheduleTrainClassSelect.value);
+        const travelFactor = parseFloat(scheduleTravelFactorInput.value);
+        if (isNaN(lineId)) { alert("A valid line must be selected."); return; }
+        const stops = [];
+        scheduleStopsTableBody.querySelectorAll('tr').forEach(tr => {
+            const stationId = parseInt(tr.dataset.stationId);
+            if (isNaN(stationId)) return;
+
+            const dwellInput = tr.querySelector('.dwell-time-input');
+            const earliestDepartureInput = tr.querySelector('.earliest-departure-input');
+            const latestArrivalInput = tr.querySelector('.latest-arrival-input');
+
+            const dwellTime = dwellInput.value === '' ? null : parseInt(dwellInput.value, 10);
+            const earliestDeparture = earliestDepartureInput.value === '' ? null : parseInt(earliestDepartureInput.value, 10);
+            const latestArrival = latestArrivalInput.value === '' ? null : parseInt(latestArrivalInput.value, 10);
+            
+            stops.push({
+                stationId,
+                dwellTime: isNaN(dwellTime) ? null : dwellTime,
+                earliestDeparture: isNaN(earliestDeparture) ? null : earliestDeparture,
+                latestArrival: isNaN(latestArrival) ? null : latestArrival
+            });
+        });
+        const scheduleData = { id, name, lineId, trainClassId, travelFactor, stops };
+        const existingIndex = schedules.findIndex(s => s.id === id);
+        if (existingIndex > -1) { schedules[existingIndex] = scheduleData; } else { schedules.push(scheduleData); }
+        renderSchedulesList();
+        showSchedulesListView();
+        saveState();
+    }
+
+    // --- TRAINS Functions ---
+    function renderTrainsList() {
+        trainsListContainer.innerHTML = '';
+        if (trainClasses.length === 0) {
+            trainsListContainer.innerHTML = '<p style="text-align:center; color: #666;">No train classes defined.</p>';
+            return;
+        }
+        trainClasses.forEach((train, index) => {
+            const el = document.createElement('div');
+            el.className = 'list-item';
+            const disableUp = index === 0;
+            const disableDown = index === trainClasses.length - 1;
+            el.innerHTML = `
+                <div class="list-item-main-content">
+                    <button class="reorder-button" data-action="move-up" data-id="${train.id}" title="Move Up" ${disableUp ? 'disabled' : ''}>▲</button>
+                    <button class="reorder-button" data-action="move-down" data-id="${train.id}" title="Move Down" ${disableDown ? 'disabled' : ''}>▼</button>
+                    <span class="list-item-name">${train.name}</span> 
+                </div>
+                <span class="list-item-details">Speed: ${train.speed.toFixed(2)}</span> 
+                <div class="list-item-actions">
+                    <button data-action="edit" data-id="${train.id}">Edit</button> 
+                    <button data-action="delete" data-id="${train.id}" class="danger">Delete</button> 
+                </div>`;
+            trainsListContainer.appendChild(el);
+        });
+    }
+    function handleTrainsListClick(e) {
+        const action = e.target.dataset.action;
+        const id = parseInt(e.target.dataset.id);
+        if (!action || !id) return;
+        const trainIndex = trainClasses.findIndex(t => t.id === id);
+        if (trainIndex === -1) return;
+        
+        switch (action) {
+            case 'edit': showTrainEditor(trainClasses[trainIndex]); break;
+            case 'delete':
+                const isUsed = schedules.some(s => s.trainClassId === id);
+                if (isUsed) { alert(`Cannot delete "${trainClasses[trainIndex].name}" because it is currently used by one or more schedules.`); return; }
+                if (window.confirm(`Are you sure you want to delete train class "${trainClasses[trainIndex].name}"?`)) { trainClasses.splice(trainIndex, 1); renderTrainsList(); saveState(); } 
+                break;
+            case 'move-up':
+                if (trainIndex > 0) { [trainClasses[trainIndex], trainClasses[trainIndex - 1]] = [trainClasses[trainIndex - 1], trainClasses[trainIndex]]; renderTrainsList(); saveState(); }
+                break;
+            case 'move-down':
+                if (trainIndex < trainClasses.length - 1) { [trainClasses[trainIndex], trainClasses[trainIndex + 1]] = [trainClasses[trainIndex + 1], trainClasses[trainIndex]]; renderTrainsList(); saveState(); }
+                break;
+        }
+    }
+    function showTrainsListView() {
+        trainEditor.style.display = 'none';
+        trainsListView.style.display = 'block';
+        setOpsManagerEditingMode(false);
+    }
+    function showTrainEditor(train = null) {
+        trainsListView.style.display = 'none';
+        trainEditor.style.display = 'block';
+        setOpsManagerEditingMode(true);
+        if (train) {
+            trainEditorTitle.textContent = 'Edit Train Class';
+            trainIdInput.value = train.id;
+            trainNameInput.value = train.name;
+            trainSpeedInput.value = train.speed;
+        } else {
+            trainEditorTitle.textContent = 'Create New Train Class';
+            trainIdInput.value = '';
+            trainNameInput.value = '';
+            trainSpeedInput.value = 1.0;
+        }
+    }
+    function saveTrainClass() {
+        const id = trainIdInput.value ? parseInt(trainIdInput.value) : Date.now();
+        const name = trainNameInput.value.trim() || 'Untitled Train';
+        const speed = parseFloat(trainSpeedInput.value);
+
+        if (isNaN(speed) || speed <= 0 || speed > 1) {
+            alert("Speed must be a positive number up to a maximum of 1.0.");
+            return;
+        }
+        const trainData = { id, name, speed };
+        const existingIndex = trainClasses.findIndex(t => t.id === id);
+        if (existingIndex > -1) {
+            trainClasses[existingIndex] = trainData;
+        } else {
+            trainClasses.push(trainData);
+        }
+        renderTrainsList();
+        showTrainsListView();
+        saveState();
+    }
+
+
+    // --- Station and Safety Functions ---
+    function confirmStationOverwrite(r, c) { if (r < 0 || r >= numRows || c < 0 || c >= numCols) return true; const cell = gridData[r][c]; if (cell.isStation) { return window.confirm(`You are about to modify/delete part of Station #${cell.stationId}. Are you sure?`); } return true; }
+    function unifyAdjacentStations(r, c) { const adjacentIds = new Set(); const neighbors = [{r: r-1, c: c}, {r: r+1, c: c}, {r: r, c: c-1}, {r: r, c: c+1}]; neighbors.forEach(n => { if (n.r >= 0 && n.r < numRows && n.c >= 0 && n.c < numCols) { const neighborCell = gridData[n.r][n.c]; if (neighborCell.isStation && neighborCell.stationId != null) { adjacentIds.add(neighborCell.stationId); } } }); if (adjacentIds.size === 0) { gridData[r][c].stationId = nextStationId++; return; } const targetId = Math.min(...adjacentIds); gridData[r][c].stationId = targetId; const queue = [{r, c}]; const visited = new Set([`${r},${c}`]); adjacentIds.forEach(id => { if(id !== targetId) { for (const neighbor of neighbors) { if (neighbor.r >= 0 && neighbor.r < numRows && neighbor.c >= 0 && neighbor.c < numCols && gridData[neighbor.r][neighbor.c].stationId === id) { const key = `${neighbor.r},${neighbor.c}`; if (!visited.has(key)) { queue.push({ r: neighbor.r, c: neighbor.c }); visited.add(key); } } } } }); while (queue.length > 0) { const {r: currentR, c: currentC} = queue.shift(); gridData[currentR][currentC].stationId = targetId; const currentNeighbors = [{r: currentR-1, c: currentC}, {r: currentR+1, c: currentC}, {r: currentR, c: currentC-1}, {r: currentR, c: currentC+1}]; currentNeighbors.forEach(n => { const key = `${n.r},${n.c}`; if (n.r >= 0 && n.r < numRows && n.c >= 0 && n.c < numCols && !visited.has(key) && gridData[n.r][n.c].isStation) { visited.add(key); queue.push({r: n.r, c: n.c}); } }); } }
+
+    // --- Core Application Functions ---
+    function createEmptyCell() { return { N: false, E: false, S: false, W: false, caseIndex: CI.EMPTY, isInvalid: false, isOverpass: false, isStation: false, stationId: null }; }
+    function setupDimensions() { numRows = parseInt(document.getElementById('rows').value); numCols = parseInt(document.getElementById('cols').value); cellSize = parseInt(document.getElementById('cellSize').value); canvas.width = numCols * cellSize; canvas.height = numRows * cellSize; }
+    function initializeOrResizeGrid(clearOnly = false) { const oldGridData = gridData; const oldNumRows = numRows; const oldNumCols = numCols; setupDimensions(); const newGrid = Array(numRows).fill(null).map(() => Array(numCols).fill(null).map(() => createEmptyCell())); if (!clearOnly && oldGridData && oldGridData.length > 0 && (numRows !== oldNumRows || numCols !== oldNumCols || !gridDataIsEmpty(oldGridData))) { const rowOffset = Math.max(0, Math.floor((numRows - oldNumRows) / 2)); const colOffset = Math.max(0, Math.floor((numCols - oldNumCols) / 2)); for (let r_old = 0; r_old < oldNumRows; r_old++) { for (let c_old = 0; c_old < oldNumCols; c_old++) { const newR = r_old + rowOffset; const newC = c_old + colOffset; if (newR >= 0 && newR < numRows && newC >= 0 && newC < numCols && oldGridData[r_old] && oldGridData[r_old][c_old]) { newGrid[newR][newC] = JSON.parse(JSON.stringify(oldGridData[r_old][c_old])); } } } gridData = newGrid; } else { gridData = newGrid; } if (clearOnly) { nextStationId = 1; lines = []; schedules = []; } selectedCellCoords = null; updateSelectionUI(); validateGrid(); drawGrid(); exportAllDataToTextAreas(); historyStack = []; historyIndex = -1; saveState(); }
+    function gridDataIsEmpty(data) { if (!data || data.length === 0) return true; for (let r = 0; r < data.length; r++) { for (let c = 0; c < data[0].length; c++) { const cell = data[r][c]; if (cell.caseIndex !== CI.EMPTY || cell.N || cell.E || cell.S || cell.W || cell.isOverpass || cell.isStation) return false; } } return true; }
+    function getExpectedConnections(caseIndex) { const definition = TILE_DEFINITIONS[caseIndex]; if (!definition) { console.warn(`No TILE_DEFINITION for caseIndex: ${caseIndex}`); return TILE_DEFINITIONS[CI.EMPTY]; } return { ...definition }; }
+    function validateGrid() { if (!gridData || gridData.length === 0) return; for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { gridData[r][c].isInvalid = false; } } for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { const cell = gridData[r][c]; const expected = getExpectedConnections(cell.caseIndex); if (cell.caseIndex !== CI.EMPTY) { if (cell.N !== expected.N || cell.E !== expected.E || cell.S !== expected.S || cell.W !== expected.W) cell.isInvalid = true; } else { if (cell.N || cell.E || cell.S || cell.W) cell.isInvalid = true; } if (cell.N && (r === 0 || !gridData[r-1][c].S)) cell.isInvalid = true; if (r > 0 && gridData[r-1][c].S && !cell.N) { gridData[r][c].isInvalid = true; if(gridData[r-1][c].caseIndex !== CI.EMPTY) gridData[r-1][c].isInvalid = true;} if (cell.E && (c === numCols - 1 || !gridData[r][c+1].W)) cell.isInvalid = true; if (c < numCols - 1 && gridData[r][c+1].W && !cell.E) { gridData[r][c].isInvalid = true; if(gridData[r][c+1].caseIndex !== CI.EMPTY) gridData[r][c+1].isInvalid = true;} if (cell.S && (r === numRows - 1 || !gridData[r+1][c].N)) cell.isInvalid = true; if (r < numRows - 1 && gridData[r+1][c].N && !cell.S) { gridData[r][c].isInvalid = true; if(gridData[r+1][c].caseIndex !== CI.EMPTY) gridData[r+1][c].isInvalid = true;} if (cell.W && (c === 0 || !gridData[r][c-1].E)) cell.isInvalid = true; if (c > 0 && gridData[r][c-1].E && !cell.W) { gridData[r][c].isInvalid = true; if(gridData[r-1][c].caseIndex !== CI.EMPTY) gridData[r-1][c].isInvalid = true;}  if (cell.isStation && !(cell.caseIndex === CI.V_STRAIGHT || cell.caseIndex === CI.H_STRAIGHT) ) { cell.isStation = false; cell.stationId = null; cell.isInvalid = true; } if (cell.isOverpass && cell.caseIndex !== CI.DIAMOND_X) { cell.isOverpass = false; cell.isInvalid = true; } } } }
+    function mapConnectionsToCaseIndexAndRotation(N,E,S,W){const mask=(N?8:0)+(E?4:0)+(S?2:0)+(W?1:0);let i=CI.EMPTY;switch(mask){case 1:i=CI.DEAD_W;break;case 2:i=CI.DEAD_S;break;case 3:i=CI.TURN_S_W;break;case 4:i=CI.DEAD_E;break;case 5:i=CI.H_STRAIGHT;break;case 6:i=CI.TURN_S_E;break;case 7:i=CI.S_W_R;break;case 8:i=CI.DEAD_N;break;case 9:i=CI.TURN_N_W;break;case 10:i=CI.V_STRAIGHT;break;case 11:i=CI.S_N_R;break;case 12:i=CI.TURN_N_E;break;case 13:i=CI.S_E_R;break;case 14:i=CI.S_S_R;break;case 15:i=CI.DIAMOND_X}return{caseIndex:i}}
+    
+    function findStationCells(stationId) {
+        const cells = [];
+        if (stationId == null) return cells;
+        for (let r = 0; r < numRows; r++) {
+            for (let c = 0; c < numCols; c++) {
+                if (gridData[r][c].isStation && gridData[r][c].stationId === stationId) {
+                    cells.push({r, c});
+                }
+            }
+        }
+        return cells;
+    }
+
+    function getStationCenter(stationId) {
+        const cells = findStationCells(stationId);
+        if (cells.length === 0) return null;
+        let totalR = 0, totalC = 0;
+        cells.forEach(cell => {
+            totalR += cell.r;
+            totalC += cell.c;
+        });
+        const centerR = totalR / cells.length;
+        const centerC = totalC / cells.length;
+        return {
+            x: (centerC + 0.5) * cellSize,
+            y: (centerR + 0.5) * cellSize
+        };
+    }
+
+    function drawGrid() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let r = 0; r < numRows; ++r) { for (let c = 0; c < numCols; ++c) {
+            const cell = gridData[r][c];
+            if (cell.isStation) { ctx.fillStyle = STATION_BACKGROUND_COLOR; } 
+            else if (cell.isOverpass) { ctx.fillStyle = OVERPASS_BG_COLOR; } 
+            else { ctx.fillStyle = TILE_COLORS[cell.caseIndex] || TILE_COLORS.default; }
+            const x = c * cellSize; const y = r * cellSize;
+            ctx.fillRect(x, y, cellSize, cellSize);
+            drawCellContent(ctx, cell, cellSize, x, y, r, c); 
+            ctx.strokeStyle = '#c8d6e5'; ctx.lineWidth = 1;
+            const sNeighbor = (r + 1 < numRows) ? gridData[r+1][c] : null;
+            if (!cell.isStation || !sNeighbor || !sNeighbor.isStation || sNeighbor.stationId !== cell.stationId) { ctx.beginPath(); ctx.moveTo(x, y + cellSize); ctx.lineTo(x + cellSize, y + cellSize); ctx.stroke(); }
+            const eNeighbor = (c + 1 < numCols) ? gridData[r][c+1] : null;
+            if (!cell.isStation || !eNeighbor || !eNeighbor.isStation || eNeighbor.stationId !== cell.stationId) { ctx.beginPath(); ctx.moveTo(x + cellSize, y); ctx.lineTo(x + cellSize, y + cellSize); ctx.stroke(); }
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + cellSize, y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + cellSize); ctx.stroke();
+            if (cell.isInvalid) { ctx.fillStyle = INVALID_COLOR; ctx.fillRect(x, y, cellSize, cellSize); }
+            if (selectedCellCoords && selectedCellCoords.r === r && selectedCellCoords.c === c) { ctx.strokeStyle = '#007bff'; ctx.lineWidth = 2.5; ctx.strokeRect(x + 1.5, y + 1.5, cellSize - 3, cellSize - 3); }
+        }}
+
+        // Draw selection highlights and lines if in selection mode
+        if (isSelectingStationsForLine) {
+            const stationPositions = [];
+            // Highlight all cells for each selected station
+            lineBuilderData.stations.forEach(stationId => {
+                const cells = findStationCells(stationId);
+                cells.forEach(cell => {
+                    ctx.fillStyle = SELECTION_HIGHLIGHT_COLOR;
+                    ctx.fillRect(cell.c * cellSize, cell.r * cellSize, cellSize, cellSize);
+                });
+                stationPositions.push(getStationCenter(stationId));
+            });
+
+            // Draw connecting lines between station centers
+            if (stationPositions.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(stationPositions[0].x, stationPositions[0].y);
+                for (let i = 1; i < stationPositions.length; i++) {
+                    ctx.lineTo(stationPositions[i].x, stationPositions[i].y);
+                }
+                ctx.strokeStyle = '#0056b3';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            }
+            
+            // Draw numbers on top of each station
+            stationPositions.forEach((pos, index) => {
+                if (!pos) return;
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, cellSize * 0.3, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.strokeStyle = '#2c3e50';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = '#2c3e50';
+                ctx.font = `bold ${Math.max(10, cellSize * 0.35)}px 'Segoe UI'`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(index + 1, pos.x, pos.y);
+            });
+        }
+    }
+
+    function drawCellContent(targetCtx, cellData, size, x_offset = 0, y_offset = 0, r, c) {
+        const { caseIndex, isOverpass, isStation, stationId } = cellData; 
+        const s = size; const half = s / 2; const trackWidth = Math.max(1, s / 12);
+        targetCtx.save(); targetCtx.translate(x_offset, y_offset); 
+        if (isStation && (caseIndex === CI.V_STRAIGHT || caseIndex === CI.H_STRAIGHT)) {
+            const isPrimary = r < 0 || c < 0 || ((r === numRows - 1 || !gridData[r+1][c].isStation || gridData[r+1][c].stationId !== stationId) && (c === numCols - 1 || !gridData[r][c+1].isStation || gridData[r][c+1].stationId !== stationId));
+            if (isPrimary) { targetCtx.fillStyle = STATION_PLATFORM_COLOR; const platformWidth = s * 0.25; const platformLength = s * 0.8; const platformMargin = s * 0.05; const trackHalfWidth = trackWidth / 2; targetCtx.save(); targetCtx.translate(half, half); if (caseIndex === CI.H_STRAIGHT) targetCtx.rotate(Math.PI / 2); targetCtx.fillRect(trackHalfWidth + platformMargin, -platformLength / 2, platformWidth, platformLength); targetCtx.restore(); }
+        }
+        targetCtx.strokeStyle = '#2c3e50'; targetCtx.lineWidth = trackWidth; targetCtx.lineCap = 'round';
+        switch (caseIndex) { case CI.EMPTY: break; case CI.V_STRAIGHT: targetCtx.beginPath(); targetCtx.moveTo(half, 0); targetCtx.lineTo(half, s); targetCtx.stroke(); break; case CI.H_STRAIGHT: targetCtx.beginPath(); targetCtx.moveTo(0, half); targetCtx.lineTo(s, half); targetCtx.stroke(); break; case CI.DEAD_N: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half-s*0.15,half);targetCtx.lineTo(half+s*0.15,half);targetCtx.stroke();break; case CI.DEAD_E: targetCtx.beginPath();targetCtx.moveTo(s,half);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half,half-s*0.15);targetCtx.lineTo(half,half+s*0.15);targetCtx.stroke();break; case CI.DEAD_S: targetCtx.beginPath();targetCtx.moveTo(half,s);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half-s*0.15,half);targetCtx.lineTo(half+s*0.15,half);targetCtx.stroke();break; case CI.DEAD_W: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half,half-s*0.15);targetCtx.lineTo(half,half+s*0.15);targetCtx.stroke();break; case CI.TURN_N_E: targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();break; case CI.TURN_S_E: targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.TURN_S_W: targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.TURN_N_W: targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.DIAMOND_X: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();if(isOverpass&&size>10){const gap=s*0.15;targetCtx.moveTo(0,half);targetCtx.lineTo(half-gap,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(half+gap,half);targetCtx.lineTo(s,half);targetCtx.stroke();}else{targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();}break; case CI.S_N_L: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();break; case CI.S_E_L: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.S_S_L: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.S_W_L: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.S_N_R: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0,0.5*Math.PI,false);targetCtx.stroke();break; case CI.S_E_R: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,0.5*Math.PI,Math.PI,false);targetCtx.stroke();break; case CI.S_S_R: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,Math.PI,1.5*Math.PI,false);targetCtx.stroke();break; case CI.S_W_R: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,1.5*Math.PI,0,false);targetCtx.stroke();break; case CI.SLIP_SW: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.SLIP_NW: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.SLIP_NE: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();break; case CI.SLIP_SE: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.DBL_SLIP_NW_SE: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.DBL_SLIP_NE_SW: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.SYM_N: targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.SYM_E: targetCtx.beginPath();targetCtx.arc(s,0,half,0.5*Math.PI,Math.PI,false);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,0.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.SYM_S: targetCtx.beginPath();targetCtx.arc(s,s,half,0.5*Math.PI,Math.PI,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,0.5*Math.PI,true);targetCtx.stroke();break; case CI.SYM_W: targetCtx.beginPath();targetCtx.arc(0,0,half,0,0.5*Math.PI,false);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,0.5*Math.PI,true);targetCtx.stroke();break; default: if(size > 10) console.warn("Unknown caseIndex:", caseIndex); }
+        if (isStation && stationId != null && size > 15) { targetCtx.fillStyle = STATION_ID_COLOR; const fontSize = Math.max(8, Math.min(Math.floor(s * 0.25), 10)); targetCtx.font = `${fontSize}px Arial`; targetCtx.textAlign = 'left'; targetCtx.textBaseline = 'top'; targetCtx.fillText(stationId.toString(), s * 0.08, s * 0.08); }
+        targetCtx.restore(); 
+    }
+
+    function getCellsOnLine(r1, c1, r2, c2) { const cells = []; const dr = r2 - r1; const dc = c2 - c1; const steps = Math.max(Math.abs(dr), Math.abs(dc)); if (steps === 0) { if (!cells.find(cell => cell.r === r1 && cell.c === c1)) cells.push({ r: r1, c: c1 }); return cells; } for (let i = 0; i <= steps; i++) { const r_ = Math.round(r1 + (dr / steps) * i); const c_ = Math.round(c1 + (dc / steps) * i); if (!cells.find(cell => cell.r === r_ && cell.c === c_)) { cells.push({ r: r_, c: c_ }); } } return cells; }
+    function updateCellAndRefresh(r_update, c_update) { if (r_update < 0 || r_update >= numRows || c_update < 0 || c_update >= numCols) return; const cell = gridData[r_update][c_update]; const { caseIndex: newResolvedCaseIndex } = mapConnectionsToCaseIndexAndRotation(cell.N, cell.E, cell.S, cell.W); const currentTypeDef = TILE_DEFINITIONS[cell.caseIndex]; let typeStillMatchesConnections = false; if (currentTypeDef) { typeStillMatchesConnections = (currentTypeDef.N === cell.N && currentTypeDef.E === cell.E && currentTypeDef.S === cell.S && currentTypeDef.W === cell.W); } if (!typeStillMatchesConnections) { cell.caseIndex = newResolvedCaseIndex; } const finalCaseIndex = cell.caseIndex; if (!(finalCaseIndex === CI.V_STRAIGHT || finalCaseIndex === CI.H_STRAIGHT)) { if (cell.isStation) { cell.isStation = false; cell.stationId = null; } } if (finalCaseIndex !== CI.DIAMOND_X) { cell.isOverpass = false; } }
+    canvas.addEventListener('mousedown', (e) => { 
+
+        if (isSelectingStationsForLine || isEditingInOpsManager) return; 
+
+        const rect = canvas.getBoundingClientRect(); 
+        const x_mouse = e.clientX - rect.left; 
+        const y_mouse = e.clientY - rect.top; 
+        const c_mouse = Math.floor(x_mouse / cellSize); 
+        const r_mouse = Math.floor(y_mouse / cellSize); 
+        if (r_mouse < 0 || r_mouse >= numRows || c_mouse < 0 || c_mouse >= numCols) return; 
+
+        if (e.button === 0) { 
+            isDrawing = true; 
+            isErasing = false; 
+            lastCell = { r: r_mouse, c: c_mouse }; 
+            if (selectedCellCoords && (selectedCellCoords.r !== r_mouse || selectedCellCoords.c !== c_mouse)) { 
+                selectedCellCoords = null; 
+                updateSelectionUI(); 
+            } 
+        } else if (e.button === 2) { 
+            isErasing = true; 
+            isDrawing = false; 
+            lastCell = { r: r_mouse, c: c_mouse }; 
+            eraseCell(r_mouse, c_mouse); 
+            if (selectedCellCoords && selectedCellCoords.r === r_mouse && selectedCellCoords.c === c_mouse) { 
+                selectedCellCoords = null; 
+                updateSelectionUI(); 
+            } 
+        } 
+    });
+    function eraseCell(r, c) { if (r < 0 || r >= numRows || c < 0 || c >= numCols) return; if (!confirmStationOverwrite(r, c)) return; const cell = gridData[r][c]; const connectionsToBreak = { N: cell.N, E: cell.E, S: cell.S, W: cell.W }; cell.N = false; cell.E = false; cell.S = false; cell.W = false; cell.caseIndex = CI.EMPTY; cell.isOverpass = false; cell.isStation = false; cell.stationId = null; updateCellAndRefresh(r, c); if (connectionsToBreak.N && r > 0) { gridData[r-1][c].S = false; updateCellAndRefresh(r-1, c); } if (connectionsToBreak.S && r < numRows - 1) { gridData[r+1][c].N = false; updateCellAndRefresh(r+1, c); } if (connectionsToBreak.W && c > 0) { gridData[r][c-1].E = false; updateCellAndRefresh(r, c-1); } if (connectionsToBreak.E && c < numCols - 1) { gridData[r][c+1].W = false; updateCellAndRefresh(r, c+1); } validateGrid(); drawGrid(); }
+    canvas.addEventListener('click', (e) => { 
+        const rect = canvas.getBoundingClientRect(); 
+        const x_click = e.clientX - rect.left; 
+        const y_click = e.clientY - rect.top; 
+        const c_click = Math.floor(x_click / cellSize); 
+        const r_click = Math.floor(y_click / cellSize);
+
+        if (isSelectingStationsForLine) {
+            handleStationSelectionClick(r_click, c_click);
+            return;
+        }
+
+        if (r_click < 0 || r_click >= numRows || c_click < 0 || c_click >= numCols) {
+            if (selectedCellCoords) selectedCellCoords = null;
+            updateSelectionUI(); 
+            drawGrid();
+            return;
+        }
+
+        if (isDrawing || isErasing || e.button !== 0) return; 
+        
+        if (selectedCellCoords && selectedCellCoords.r === r_click && selectedCellCoords.c === c_click) { 
+            selectedCellCoords = null; 
+        } else { 
+            selectedCellCoords = { r: r_click, c: c_click }; 
+        } 
+        updateSelectionUI(); 
+        drawGrid(); 
+    });
+    canvas.addEventListener('mousemove', (e) => { 
+        if (!isDrawing && !isErasing || isEditingInOpsManager) return; 
+        if (selectedCellCoords) { selectedCellCoords = null; updateSelectionUI(); } 
+        const rect = canvas.getBoundingClientRect(); 
+        const mouseX = e.clientX - rect.left; 
+        const mouseY = e.clientY - rect.top; 
+        const c_move = Math.floor(mouseX / cellSize); 
+        const r_move = Math.floor(mouseY / cellSize); 
+        if (!lastCell || (r_move === lastCell.r && c_move === lastCell.c) || r_move < 0 || r_move >= numRows || c_move < 0 || c_move >= numCols) return; 
+        const pathCells = getCellsOnLine(lastCell.r, lastCell.c, r_move, c_move); 
+        if (isDrawing) { 
+            for (const cell of pathCells) { if (!confirmStationOverwrite(cell.r, cell.c)) { lastCell = { r: r_move, c: c_move }; validateGrid(); drawGrid(); return; } } 
+            for (let i = 0; i < pathCells.length; i++) { 
+                const {r,c} = pathCells[i]; 
+                if (i > 0) { 
+                    const prev = pathCells[i-1]; 
+                    if (Math.abs(r - prev.r) + Math.abs(c - prev.c) === 1) { 
+                        if (r > prev.r) { gridData[prev.r][prev.c].S = true; gridData[r][c].N = true; } 
+                        else if (r < prev.r) { gridData[prev.r][prev.c].N = true; gridData[r][c].S = true; } 
+                        else if (c > prev.c) { gridData[prev.r][prev.c].E = true; gridData[r][c].W = true; } 
+                        else if (c < prev.c) { gridData[prev.r][prev.c].W = true; gridData[r][c].E = true; } 
+                        updateCellAndRefresh(prev.r, prev.c); 
+                    } 
+                } 
+                updateCellAndRefresh(r, c); 
+            } 
+        } else if (isErasing) { 
+            pathCells.forEach(cell => eraseCell(cell.r, cell.c)); 
+        } 
+        lastCell = { r: r_move, c: c_move }; 
+        if (isDrawing) { validateGrid(); drawGrid(); } });
+    function handleInteractionEnd() { if (isDrawing || isErasing) { isDrawing = false; isErasing = false; lastCell = null; exportAllDataToTextAreas(); saveState(); } }
+    canvas.addEventListener('mouseup', handleInteractionEnd); canvas.addEventListener('mouseleave', handleInteractionEnd); canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    function rotateSelectedCell() { if (!selectedCellCoords || rotatePieceButton.disabled) return; const { r, c } = selectedCellCoords; if (ROTATION_MAP[gridData[r][c].caseIndex]) { applyPieceChangeToCell(r, c, ROTATION_MAP[gridData[r][c].caseIndex]); } }
+    function flipSelectedCell() { if (!selectedCellCoords || flipPieceButton.disabled) return; const { r, c } = selectedCellCoords; if (FLIP_MAP[gridData[r][c].caseIndex]) { applyPieceChangeToCell(r, c, FLIP_MAP[gridData[r][c].caseIndex]); } }
+    function cycleSelectedCell(forward) { if (!selectedCellCoords) return; const { r, c } = selectedCellCoords; const cell = gridData[r][c]; let currentCase = cell.caseIndex; let currentIndexInCycle = CYCLEABLE_CASE_INDEXES.indexOf(currentCase); if (currentIndexInCycle === -1 && currentCase !== CI.EMPTY) { for(const base of CYCLEABLE_CASE_INDEXES){ if(isRotationalOrFlipVariant(base, currentCase)) {currentIndexInCycle = CYCLEABLE_CASE_INDEXES.indexOf(base); break;} } if (currentIndexInCycle === -1) currentIndexInCycle = 0; } if (forward) { currentIndexInCycle = (currentIndexInCycle + 1) % CYCLEABLE_CASE_INDEXES.length; } else { currentIndexInCycle = (currentIndexInCycle - 1 + CYCLEABLE_CASE_INDEXES.length) % CYCLEABLE_CASE_INDEXES.length; } applyPieceChangeToCell(r, c, CYCLEABLE_CASE_INDEXES[currentIndexInCycle]); }
+    window.addEventListener('keydown', (e) => {
+        const key = e.key.toLowerCase();
+        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+        if (isSelectingStationsForLine) return; // Block key events during selection
+        if (selectedCellCoords) {
+            let moved = false;
+            let { r, c } = selectedCellCoords;
+            switch (e.key) {
+                case 'ArrowUp':    if (r > 0) { r--; moved = true; } break;
+                case 'ArrowDown':  if (r < numRows - 1) { r++; moved = true; } break;
+                case 'ArrowLeft':  if (c > 0) { c--; moved = true; } break;
+                case 'ArrowRight': if (c < numCols - 1) { c++; moved = true; } break;
+            }
+            if (moved) {
+                e.preventDefault(); 
+                selectedCellCoords = { r, c };
+                updateSelectionUI();
+                drawGrid();
+                return; 
+            }
+        }
+        if (key === 'q') { undoButton.click(); return; }
+        if (key === 'w') { redoButton.click(); return; }
+        if (!selectedCellCoords) return;
+        if (key === 'r') { rotateSelectedCell(); }
+        else if (key === 'f') { flipSelectedCell(); }
+        else if (key === 's') { toggleStationButton.click(); }
+        else if (key === 'd') { renameStationButton.click(); }
+        else if (key === 'c') { toggleOverpassButton.click(); }
+        else if (key === 'x') { cycleSelectedCell(true); }
+        else if (key === 'y') { cycleSelectedCell(false); }
+    });
+    function applyPieceChangeToCell(r, c, newCaseIndex) { if (!confirmStationOverwrite(r, c)) return; const cell = gridData[r][c]; cell.caseIndex = newCaseIndex; const newExpected = getExpectedConnections(cell.caseIndex); cell.N = newExpected.N; cell.E = newExpected.E; cell.S = newExpected.S; cell.W = newExpected.W; if (!(cell.caseIndex === CI.V_STRAIGHT || cell.caseIndex === CI.H_STRAIGHT)) { cell.isStation = false; cell.stationId = null; } if (cell.caseIndex !== CI.DIAMOND_X) { cell.isOverpass = false; } if (r > 0) { gridData[r-1][c].S = cell.N; updateCellAndRefresh(r-1,c); } if (r < numRows - 1) { gridData[r+1][c].N = cell.S; updateCellAndRefresh(r+1,c); } if (c > 0) { gridData[r][c-1].E = cell.W; updateCellAndRefresh(r,c-1); } if (c < numCols - 1) { gridData[r][c+1].W = cell.E; updateCellAndRefresh(r,c+1); } validateGrid(); drawGrid(); updateSelectionUI(); exportAllDataToTextAreas(); saveState(); }
+    function isRotationalOrFlipVariant(baseCase, targetCase) { if (baseCase === targetCase) return true; let current = baseCase; for (let i = 0; i < 4; i++) { if (ROTATION_MAP[current] === targetCase) return true; current = ROTATION_MAP[current]; if (!current || current === baseCase) break; } if (FLIP_MAP[baseCase] === targetCase) return true; return false; }
+    function createPalette() { palettePiecesContainer.innerHTML = ''; CYCLEABLE_CASE_INDEXES.forEach(caseIdx => { const itemCanvas = document.createElement('canvas'); itemCanvas.width = paletteCellSize; itemCanvas.height = paletteCellSize; itemCanvas.className = 'palette-item-canvas'; itemCanvas.dataset.caseIndex = caseIdx; const itemCtx = itemCanvas.getContext('2d'); const tempCell = { caseIndex: caseIdx, isStation: false, isOverpass: false, stationId: null }; itemCtx.fillStyle = TILE_COLORS[caseIdx] || TILE_COLORS.default; itemCtx.fillRect(0, 0, paletteCellSize, paletteCellSize); drawCellContent(itemCtx, tempCell, paletteCellSize, 0, 0, -1, -1); itemCanvas.addEventListener('click', () => { if (selectedCellCoords) { const {r, c} = selectedCellCoords; applyPieceChangeToCell(r, c, parseInt(itemCanvas.dataset.caseIndex)); } }); palettePiecesContainer.appendChild(itemCanvas); }); }
+    closePaletteButton.addEventListener('click', () => { if (selectedCellCoords) { selectedCellCoords = null; updateSelectionUI(); drawGrid(); } });
+    toggleStationButton.addEventListener('click', () => { if (!selectedCellCoords || toggleStationButton.disabled) return; const { r, c } = selectedCellCoords; const cell = gridData[r][c]; cell.isStation = !cell.isStation; if (cell.isStation) { unifyAdjacentStations(r, c); } else { cell.stationId = null; } validateGrid(); drawGrid(); updateSelectionUI(); exportAllDataToTextAreas(); saveState(); });
+    toggleOverpassButton.addEventListener('click', () => { if (!selectedCellCoords || toggleOverpassButton.disabled) return; const { r, c } = selectedCellCoords; gridData[r][c].isOverpass = !gridData[r][c].isOverpass; validateGrid(); drawGrid(); updateSelectionUI(); exportOverpassesToText(); saveState(); });
+    renameStationButton.addEventListener('click', () => { if (!selectedCellCoords || renameStationButton.disabled) return; const { r, c } = selectedCellCoords; const cell = gridData[r][c]; const oldId = cell.stationId; const newIdStr = prompt(`Rename all connected parts of Station #${oldId} to a new ID:`, oldId); if (newIdStr === null || newIdStr.trim() === "") return; const newId = parseInt(newIdStr, 10); if (isNaN(newId) || !Number.isInteger(newId) || newId < 0) { alert("Invalid ID. Please enter a non-negative integer."); return; } let idInUse = false; if (newId !== oldId) { for (let row of gridData) { for (let currentCell of row) { if (currentCell.isStation && currentCell.stationId === newId) { idInUse = true; break; } } if (idInUse) break; } } if (idInUse) { alert(`Error: Station ID #${newId} is already in use.`); return; } for (let row of gridData) { for (let currentCell of row) { if (currentCell.isStation && currentCell.stationId === oldId) { currentCell.stationId = newId; } } } nextStationId = Math.max(nextStationId, newId + 1); validateGrid(); drawGrid(); updateSelectionUI(); exportAllDataToTextAreas(); saveState(); });
+    function updateSelectionUI() { 
+        if(isSelectingStationsForLine) return; // Don't show regular selection UI in this mode
+        if (selectedCellCoords) { 
+            const {r, c} = selectedCellCoords; 
+            const cell = gridData[r][c]; 
+            let typeName = Object.keys(CI).find(key => CI[key] === cell.caseIndex) || `Unknown(${cell.caseIndex})`; 
+            let stationText = ''; 
+            if (cell.isStation && cell.stationId != null) stationText = ` (Station #${cell.stationId})`; 
+            else if (cell.stationId != null) stationText = ` (ID #${cell.stationId} - Inactive)`; 
+            else if (cell.isStation) stationText = ' (Station)'; 
+            tooltipMain.textContent = `Sel:[${r},${c}] Type:${typeName}${stationText}${cell.isOverpass?' (Overpass)':''}${cell.isInvalid?' INVALID!':''}`; 
+            tooltipMain.style.visibility = 'visible'; 
+            contextPalette.style.display = 'block'; 
+            toggleStationButton.disabled = !(cell.caseIndex === CI.V_STRAIGHT || cell.caseIndex === CI.H_STRAIGHT); 
+            toggleOverpassButton.disabled = !(cell.caseIndex === CI.DIAMOND_X); 
+            renameStationButton.disabled = !(cell.isStation && cell.stationId != null); 
+            rotatePieceButton.disabled = !ROTATION_MAP[cell.caseIndex]; 
+            flipPieceButton.disabled = !FLIP_MAP[cell.caseIndex]; 
+        } else { 
+            tooltipMain.textContent = `Selected: None`; 
+            tooltipMain.style.visibility = 'hidden'; 
+            contextPalette.style.display = 'none'; 
+            toggleStationButton.disabled = true; 
+            toggleOverpassButton.disabled = true; 
+            renameStationButton.disabled = true; 
+            rotatePieceButton.disabled = true; 
+            flipPieceButton.disabled = true; 
+        } 
+    }
+    
+    function exportAllDataToTextAreas() { exportGridToText(); exportOverpassesToText(); exportStationsToText(); }
+    function exportGridToText() { if (!gridData || gridData.length === 0) { importExportText.value = ""; return; } const exportArray = gridData.map(row => row.map(cell => cell.caseIndex)); importExportText.value = JSON.stringify(exportArray, null, 2); }
+    function importGridFromText() { try { const importedNumericArray = JSON.parse(importExportText.value); if (!Array.isArray(importedNumericArray) || (importedNumericArray.length > 0 && !Array.isArray(importedNumericArray[0])) || importedNumericArray.some(row => !Array.isArray(row) || row.some(val => typeof val !== 'number'))) { throw new Error("Invalid grid data format."); } const newNumRows = importedNumericArray.length; const newNumCols = newNumRows > 0 ? importedNumericArray[0].length : 0; if (newNumRows === 0 || newNumCols === 0) { initializeOrResizeGrid(true); alert("Imported empty grid. Grid cleared."); return; } document.getElementById('rows').value = newNumRows; document.getElementById('cols').value = newNumCols; initializeOrResizeGrid(true); for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { if (importedNumericArray[r] && importedNumericArray[r][c] !== undefined) { const cell = gridData[r][c]; cell.caseIndex = importedNumericArray[r][c]; const expected = getExpectedConnections(cell.caseIndex); cell.N = expected.N; cell.E = expected.E; cell.S = expected.S; cell.W = expected.W; } } } selectedCellCoords = null; validateGrid(); drawGrid(); updateSelectionUI(); saveState(); alert("Grid imported. Station/Overpass data cleared. History reset."); } catch (error) { console.error("Grid Import failed:", error); alert("Grid Import failed: " + error.message); } }
+    function exportOverpassesToText() { const overpassCoords = []; if (gridData && gridData.length > 0) { for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { if (gridData[r][c].isOverpass && gridData[r][c].caseIndex === CI.DIAMOND_X) { overpassCoords.push([r, c]); } } } } overpassImportExportText.value = JSON.stringify(overpassCoords, null, 2); }
+    function importOverpassesFromText() { try { const coordsToImport = JSON.parse(overpassImportExportText.value); if (!Array.isArray(coordsToImport) || !coordsToImport.every(item => Array.isArray(item) && item.length === 2 && typeof item[0] === 'number' && typeof item[1] === 'number')) { throw new Error("Invalid overpass data format."); } gridData.forEach(row => row.forEach(cell => cell.isOverpass = false )); let appliedCount = 0; coordsToImport.forEach(([r, c]) => { if (r >= 0 && r < numRows && c >= 0 && c < numCols && gridData[r][c].caseIndex === CI.DIAMOND_X) { gridData[r][c].isOverpass = true; appliedCount++; } else { console.warn(`Cannot apply overpass to [${r},${c}]`); } }); validateGrid(); drawGrid(); updateSelectionUI(); saveState(); alert(`Imported ${appliedCount} overpass(es). Existing overpasses cleared first.`); } catch (error) { console.error("Overpass import failed:", error); alert("Overpass import: " + error.message); } }
+    function exportStationsToText() { const stationData = []; if (gridData && gridData.length > 0) { const uniqueStations = new Set(); for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { const cell = gridData[r][c]; if (cell.isStation && cell.stationId != null) { uniqueStations.add(JSON.stringify([cell.stationId, r, c])); } } } stationData.push(...Array.from(uniqueStations).map(s => JSON.parse(s))); stationData.sort((a,b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]); } stationImportExportText.value = JSON.stringify(stationData, null, 2); }
+    function importStationsFromText() { try { const dataToImport = JSON.parse(stationImportExportText.value); if (!Array.isArray(dataToImport) || !dataToImport.every(item => Array.isArray(item) && item.length === 3 && typeof item[0] === 'number' && typeof item[1] === 'number' && typeof item[2] === 'number')) { throw new Error("Invalid station data format."); } gridData.forEach(row => row.forEach(cell => { cell.isStation = false; })); let appliedCount = 0; let maxImportedId = 0; dataToImport.forEach(([id, r, c]) => { if (r >= 0 && r < numRows && c >= 0 && c < numCols && (gridData[r][c].caseIndex === CI.V_STRAIGHT || gridData[r][c].caseIndex === CI.H_STRAIGHT)) { gridData[r][c].isStation = true; gridData[r][c].stationId = id; if (id > maxImportedId) maxImportedId = id; appliedCount++; } else { console.warn(`Cannot apply station ID ${id} to [${r},${c}]`); } }); nextStationId = Math.max(nextStationId, maxImportedId + 1); validateGrid(); drawGrid(); updateSelectionUI(); saveState(); alert(`Imported ${appliedCount} station(s). Existing active stations cleared first. Station IDs updated.`); } catch (error) { console.error("Station import failed:", error); alert("Station import: " + error.message); } }
+    
+    function exportAllToJson() {
+        if (!gridData || gridData.length === 0) { alert("Grid is not initialized."); return; }
+        
+        // --- Standard Export Data ---
+        const gridLayout = gridData.map(row => row.map(cell => cell.caseIndex));
+        const overpasses = [];
+        const stations = [];
+        const exportedStationCells = new Set();
+        for (let r = 0; r < numRows; r++) {
+            for (let c = 0; c < numCols; c++) {
+                const cell = gridData[r][c];
+                if (cell.isOverpass) { overpasses.push([r, c]); }
+                if (cell.isStation && cell.stationId != null) {
+                    const key = `${cell.stationId}-${r}-${c}`;
+                    if (!exportedStationCells.has(key)) {
+                        stations.push({ id: cell.stationId, r: r, c: c });
+                        exportedStationCells.add(key);
+                    }
+                }
+            }
+        }
+        stations.sort((a, b) => a.id - b.id || a.r - b.r || a.c - b.c);
+
+        // --- Flatland Export Data ---
+        const flatlandLine = {
+            agent_positions: [],
+            agent_directions: [],
+            agent_targets: [],
+            agent_speeds: []
+        };
+        const flatlandTimetable = {
+            earliest_departures: [],
+            latest_arrivals: [],
+            max_episode_steps: 0
+        };
+        let maxLatestArrival = 0;
+
+        schedules.forEach(schedule => {
+            const line = lines.find(l => l.id === schedule.lineId);
+            const train = trainClasses.find(t => t.id === schedule.trainClassId);
+
+            if (!line || !train || !line.stationIds || line.stationIds.length < 2) {
+                return; // Skip schedules that aren't valid journeys
+            }
+
+            // 1. agent_positions
+            const agentPositionsList = [];
+            // This loop goes to length-1, correctly omitting the last station
+            for (let i = 0; i < line.stationIds.length - 1; i++) {
+                const stationId = line.stationIds[i];
+                const coords = getStationCoords(stationId);
+                if (coords) agentPositionsList.push(coords);
+            }
+            flatlandLine.agent_positions.push(agentPositionsList);
+
+
+            // 2. agent_directions
+            const agentDirectionsList = [];
+             // This loop goes to length-1, correctly getting the direction for each segment
+            for (let i = 0; i < line.stationIds.length - 1; i++) {
+                const startId = line.stationIds[i];
+                const endId = line.stationIds[i+1];
+                const direction = getDepartureDirection(startId, endId);
+                agentDirectionsList.push(direction !== -1 ? direction : null); // Use null for impossible paths
+            }
+            flatlandLine.agent_directions.push(agentDirectionsList);
+
+
+            // 3. agent_targets
+            const lastStationId = line.stationIds[line.stationIds.length - 1];
+            const targetCoords = getStationCoords(lastStationId);
+            if (targetCoords) flatlandLine.agent_targets.push(targetCoords);
+
+            // 4. agent_speeds
+            flatlandLine.agent_speeds.push(train.speed);
+
+            // 5. Timetable data (Corrected)
+            const earliestDepartures = [];
+            const latestArrivals = []; // FIX: Initialized as empty array
+
+            schedule.stops.forEach(stop => {
+                // The schedule editor disables input for the first arrival and last departure,
+                // so their values in the data are null. We just add all of them.
+                earliestDepartures.push(stop.earliestDeparture);
+                latestArrivals.push(stop.latestArrival);
+                
+                if (stop.latestArrival != null && stop.latestArrival > maxLatestArrival) {
+                    maxLatestArrival = stop.latestArrival;
+                }
+            });
+            // FIX: Removed the line that pushed a final null to earliestDepartures
+
+            flatlandTimetable.earliest_departures.push(earliestDepartures);
+            flatlandTimetable.latest_arrivals.push(latestArrivals);
+        });
+
+        flatlandTimetable.max_episode_steps = maxLatestArrival * 2;
+
+        const dataToExport = {
+            gridDimensions: { rows: numRows, cols: numCols, cellSize: cellSize },
+            grid: gridLayout,
+            overpasses: overpasses,
+            stations: stations,
+            nextStationId: nextStationId,
+            lines: lines,
+            schedules: schedules,
+            trainClasses: trainClasses,
+            "flatland line": flatlandLine,
+            "flatland timetable": flatlandTimetable
+        };
+
+        const jsonString = JSON.stringify(dataToExport, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'rail_network_export.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+    
+    function importAllFromJson(jsonString) { try { const data = JSON.parse(jsonString); if (!data.grid || !Array.isArray(data.grid)) { throw new Error("JSON file must contain a 'grid' array."); } let newRows, newCols, newCellSize; if (data.gridDimensions) { newRows = data.gridDimensions.rows; newCols = data.gridDimensions.cols; newCellSize = data.gridDimensions.cellSize || 25; if (data.grid.length > 0) { if (data.grid.length !== newRows) newRows = data.grid.length; if (data.grid[0].length !== newCols) newCols = data.grid[0].length; } } else { newRows = data.grid.length; newCols = data.grid.length > 0 ? data.grid[0].length : 0; newCellSize = 25; } document.getElementById('rows').value = newRows; document.getElementById('cols').value = newCols; document.getElementById('cellSize').value = newCellSize; initializeOrResizeGrid(true); const importedNumericArray = data.grid; for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { if (importedNumericArray[r] && importedNumericArray[r][c] !== undefined) { const cell = gridData[r][c]; cell.caseIndex = importedNumericArray[r][c]; const expected = getExpectedConnections(cell.caseIndex); cell.N = expected.N; cell.E = expected.E; cell.S = expected.S; cell.W = expected.W; } } } (data.overpasses || []).forEach(([r, c]) => { if (r >= 0 && r < numRows && c >= 0 && c < numCols && gridData[r][c].caseIndex === CI.DIAMOND_X) { gridData[r][c].isOverpass = true; } else { console.warn(`Cannot apply overpass from JSON to [${r},${c}]`); } }); let maxImportedId = 0; (data.stations || []).forEach(s => { const {id, r, c} = s; if (r >= 0 && r < numRows && c >= 0 && c < numCols && (gridData[r][c].caseIndex === CI.V_STRAIGHT || gridData[r][c].caseIndex === CI.H_STRAIGHT)) { gridData[r][c].isStation = true; gridData[r][c].stationId = id; if (id > maxImportedId) maxImportedId = id; } else { console.warn(`Cannot apply station ID ${id} from JSON to [${r},${c}]`); } }); nextStationId = data.nextStationId !== undefined ? data.nextStationId : ((data.stations || []).length > 0 ? Math.max(1, maxImportedId + 1) : 1); 
+        lines = data.lines || []; 
+        schedules = data.schedules || [];
+        trainClasses = data.trainClasses || [ { id: 1, name: "High-Speed", speed: 1.0 }, { id: 2, name: "Express", speed: 0.8 }, { id: 3, name: "Local", speed: 0.6 }, { id: 4, name: "Cargo", speed: 0.5 } ];
+        selectedCellCoords = null; validateGrid(); drawGrid(); updateSelectionUI(); exportAllDataToTextAreas(); saveState(); alert("Full layout imported successfully!"); } catch (error) { console.error("Full Layout Import failed:", error); alert("Full Layout Import failed: " + error.message); } }
+    
+    function downloadFlatlandScript() {
+        const pythonScriptContent = `
+from flatland.envs.rail_env import RailEnv
+from flatland.envs.timetable_utils import Line, Timetable
+from flatland.core.transition_map import GridTransitionMap
+from flatland.core.grid.rail_env_grid import RailEnvTransitions
+
+import json
+import numpy as np
+
+
+def rail_generator_from_grid_map(grid_map, level_free_positions):
+    def rail_generator(*args, **kwargs):
+        return grid_map, {
+            "agents_hints": {"city_positions": {}},
+            "level_free_positions": level_free_positions,
+        }
+
+    return rail_generator
+
+def line_generator_from_line(line):
+    def line_generator(*args, **kwargs):
+        return line
+
+    return line_generator
+
+
+def timetable_generator_from_timetable(timetable):
+    def timetable_generator(*args, **kwargs):
+        return timetable
+
+    return timetable_generator
+
+
+
+with open('rail_network_export.json', 'r') as f:
+    data = json.load(f)
+
+width = data['gridDimensions']['cols']
+height = data['gridDimensions']['rows']
+
+number_of_agents = len(data['flatland line']['agent_positions'])
+
+line = Line(
+    agent_positions = [[tuple(coords) for coords in positions] for positions in data['flatland line']['agent_positions']],
+    agent_directions = data['flatland line']['agent_directions'],
+    agent_targets = [tuple(coords) for coords in data['flatland line']['agent_targets']],
+    agent_speeds = data['flatland line']['agent_speeds'],
+)
+
+timetable = Timetable(
+    earliest_departures = data['flatland timetable']['earliest_departures'],
+    latest_arrivals = data['flatland timetable']['latest_arrivals'],
+    max_episode_steps = data['flatland timetable']['max_episode_steps']
+)
+
+grid = GridTransitionMap(width=width, height=height, transitions=RailEnvTransitions())
+grid.grid = np.array(data['grid'])
+
+level_free_positions = [tuple(item) for item in data['overpasses']]
+
+
+env = RailEnv(
+    width = width,
+    height = height,
+    number_of_agents = number_of_agents,
+    rail_generator = rail_generator_from_grid_map(grid, level_free_positions),
+    line_generator = line_generator_from_line(line),
+    timetable_generator = timetable_generator_from_timetable(timetable),
+)
+
+observation, info = env.reset()
+`;
+        const blob = new Blob([pythonScriptContent.trim()], { type: 'text/x-python' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'Flatland_import.py';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // --- BUG FIX: SCROLL LEAK PREVENTION ---
+    function preventScrollLeak(event) {
+        const element = event.currentTarget;
+        const { scrollTop, scrollHeight, clientHeight } = element;
+        const delta = event.deltaY;
+        const isAtTop = scrollTop === 0;
+        const isAtBottom = Math.abs(scrollHeight - clientHeight - scrollTop) < 1;
+
+        if ((delta < 0 && isAtTop) || (delta > 0 && isAtBottom)) {
+            event.preventDefault();
+        }
+    }
+
+
+    // --- Event Listeners ---
+    document.addEventListener('DOMContentLoaded', () => {
+        consolidatedFileInput.addEventListener('change', (event) => { const file = event.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (e) => { importAllFromJson(e.target.result); }; reader.onerror = (e) => { console.error("File read error:", e); alert("Error reading layout file."); }; reader.readAsText(file); event.target.value = null; } });
+        document.getElementById('initGridButton').addEventListener('click', () => initializeOrResizeGrid(false));
+        document.getElementById('clearGridButton').addEventListener('click', () => {
+            if (window.confirm("Are you sure you want to clear the entire grid? This will delete all tracks, stations, lines, and schedules and cannot be undone.")) {
+                initializeOrResizeGrid(true);
+            }
+        });
+        document.getElementById('importGridTextButton').addEventListener('click', importGridFromText);
+        document.getElementById('importOverpassTextButton').addEventListener('click', importOverpassesFromText);
+        document.getElementById('importStationTextButton').addEventListener('click', importStationsFromText);
+        document.getElementById('exportAllJsonButton').addEventListener('click', exportAllToJson);
+        document.getElementById('importAllFileButtonTrigger').addEventListener('click', () => { consolidatedFileInput.click(); });
+        flatlandDownloadButton.addEventListener('click', downloadFlatlandScript);
+        undoButton.addEventListener('click', undo);
+        redoButton.addEventListener('click', redo);
+        rotatePieceButton.addEventListener('click', rotateSelectedCell);
+        flipPieceButton.addEventListener('click', flipSelectedCell);
+        renameStationButton.addEventListener('click', () => { if(!renameStationButton.disabled) renameStationButton.click() });
+        
+        // Collapsible Data Section Listener
+        dataContainerHeader.addEventListener('click', () => {
+            dataContainerContent.classList.toggle('collapsed');
+            dataToggleIndicator.classList.toggle('expanded');
+        });
+
+        // Operations Manager Listeners
+        openOperationsManagerButton.addEventListener('click', toggleOperationsManager);
+        closeLinesManagerButton.addEventListener('click', closeOperationsManager);
+        
+        // Tab Switching Listeners
+        linesTabButton.addEventListener('click', () => showOperationsTab('lines'));
+        schedulesTabButton.addEventListener('click', () => showOperationsTab('schedules'));
+        trainsTabButton.addEventListener('click', () => showOperationsTab('trains'));
+
+        // Lines Tab Listeners
+        newLineButton.addEventListener('click', () => showLineEditor());
+        linesListContainer.addEventListener('click', handleLinesListClick);
+        saveLineButton.addEventListener('click', saveLine);
+        cancelLineEditButton.addEventListener('click', () => showLinesListView());
+        selectStationsOnMapButton.addEventListener('click', startStationSelectionMode);
+        finishStationSelectionButton.addEventListener('click', () => endStationSelectionMode(false));
+        undoStationSelectionButton.addEventListener('click', handleUndoStationSelection);
+
+        // Schedules Tab Listeners
+        newScheduleButton.addEventListener('click', () => showScheduleEditor());
+        schedulesListContainer.addEventListener('click', handleSchedulesListClick);
+        saveScheduleButton.addEventListener('click', saveSchedule);
+        cancelScheduleEditButton.addEventListener('click', showSchedulesListView);
+        scheduleShiftButton.addEventListener('click', handleShiftTimings);
+        scheduleLineSelect.addEventListener('change', () => populateScheduleStopsTable());
+        scheduleTrainClassSelect.addEventListener('change', () => recalculateFullTimetable());
+        scheduleTravelFactorInput.addEventListener('input', () => recalculateFullTimetable());
+
+        // Trains Tab Listeners
+        newTrainButton.addEventListener('click', () => showTrainEditor());
+        trainsListContainer.addEventListener('click', handleTrainsListClick);
+        saveTrainButton.addEventListener('click', saveTrainClass);
+        cancelTrainEditButton.addEventListener('click', showTrainsListView);
+        
+        // BUG FIX: Attach scroll prevention listener to the list containers
+        [linesListContainer, schedulesListContainer, trainsListContainer].forEach(container => {
+            container.addEventListener('wheel', preventScrollLeak);
+        });
+
+        createPalette(); 
+        initializeOrResizeGrid(true);
+    });
+</script>
+</body>
+</html>
