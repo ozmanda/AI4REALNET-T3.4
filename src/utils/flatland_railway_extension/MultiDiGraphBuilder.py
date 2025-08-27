@@ -1,9 +1,10 @@
 import os
 import numpy as np
 import networkx as nx
+from itertools import islice
 import matplotlib.pyplot as plt
-from typing import Tuple, List, Dict, DefaultDict, Any
 from collections import defaultdict
+from typing import Tuple, List, Dict, DefaultDict, Any, Union
 
 from flatland.envs.rail_env import RailEnv
 from flatland.envs.rail_env_action import RailEnvActions
@@ -30,6 +31,11 @@ class MultiDiGraphBuilder:
     def __init__(self, env: RailEnv):
         self.graph: nx.MultiDiGraph = nx.MultiDiGraph()
         self.env: RailEnv = env
+        if hasattr(self.env, 'stations'):
+            self.stations: bool = True
+            self._station_preprocessing(self.env.stations)
+        else: 
+            self.stations: bool = False
         self._init_parameters()
         self._init_switch_clustering()
         self._generate_graph()
@@ -42,6 +48,7 @@ class MultiDiGraphBuilder:
         self.from_directions: List[int] = [i for i in range(n_directions)]
 
         self.nodes: Dict[str, Tuple[int, int]] = {}
+        self.stations_dict: Dict[Union[int, str], Tuple[int, int]] = {}
         self.edges: Dict[str, Tuple[Tuple[int, int], Tuple[int, int]]] = {}
         self.rail_ID_mapping: Dict[int, List[Tuple[int, int], Tuple[int, int]]] = {}
 
@@ -56,12 +63,16 @@ class MultiDiGraphBuilder:
         self.rail_clusters: np.ndarray = self.switch_clusters.connecting_edge_cluster_grid
         self.switch_clusters: np.ndarray = self.switch_clusters.railroad_switch_cluster_grid
 
+    def _station_preprocessing(self, stations) -> None:
+        self.station_nodes = {f'{station["id"]}': (station['r'], station['c']) for station in stations}
+        self.station_lookup = {v: k for k, v in self.station_nodes.items()}
+
     def _generate_graph(self) -> None:
-        start_node, start_direction = None, None
+        start_node = None
         for x, y in ((x, y) for x in range(self.height) for y in range(self.width)):
             _, nonzero_directions = self._get_valid_transitions((x, y)) 
             for direction in nonzero_directions:
-                start_node, _, _, _, dead_end = self._find_next_node((x, y), direction)
+                start_node, _, dead_end = self._find_next_node((x, y), direction)
                 if start_node and not dead_end:
                     break
             if start_node:
@@ -72,7 +83,7 @@ class MultiDiGraphBuilder:
     
     def _traverse_grid(self, start_node: Tuple[int, int]):
         """Traverse the grid from the start node in the specified direction."""
-        self._add_node(start_node)
+        self._add_node(start_node, station_ID=None)
         self._current_depth: int = 0
         _, nonzero_transitions = self._get_valid_transitions(start_node)
         for direction in nonzero_transitions:
@@ -91,28 +102,23 @@ class MultiDiGraphBuilder:
         for travel_direction in nonzero_directions:
             # if travel_direction == in_direction: # prevents going back to the previous node
                 # continue
-            next_node, travel_directions, rail_ID, resources, dead_end = self._find_next_node(node, travel_direction)
+            next_node, edge_attr, dead_end = self._find_next_node(node, travel_direction)
             # TODO: clean up attribute definition
-            edge_attr: Dict[str, Any] = {
-                'rail_ID': rail_ID,
-                'out_direction': travel_directions[0],
-                'in_direction': travel_directions[1],
-                'resources': resources, 
-                'length': len(resources),
-                'max_speed': None
-            }
             if next_node:
-                self._add_edge(node, next_node, attr=edge_attr)
-                if f'{next_node[0]}_{next_node[1]}' not in self.nodes.keys():
-                    self._add_node(next_node, dead_end=dead_end)
+                if next_node not in self.graph.nodes:
+                    self._add_node(next_node, dead_end=dead_end, station_ID=edge_attr['station ID'])
+                    self._add_edge(node, next_node, attr=edge_attr)
                     if not dead_end:
-                        self._node_splitter(next_node, travel_direction=travel_directions[1])
+                        self._node_splitter(next_node, travel_direction=edge_attr['in_direction'])
                     else:
                         # add opposite edge
                         edge_attr['out_direction'] = self._reverse_direction(edge_attr['out_direction'])
                         edge_attr['in_direction'] = self._reverse_direction(edge_attr['in_direction'])
-                        edge_attr['resources'] = resources[::-1] 
+                        edge_attr['resources'] = edge_attr['resources'][::-1] 
                         self._add_edge(next_node, node, attr=edge_attr)
+                else:
+                    self._add_edge(node, next_node, attr=edge_attr)
+
                         
 
 
@@ -120,18 +126,19 @@ class MultiDiGraphBuilder:
         """
         Find the next node in the graph based on the current position and direction of traversal.
 
-        Parameters:
-            - previous_position: Tuple[int, int], the position of the previous node
-            - travel_direction: int, the direction of travel, so the direction at which the train left the previous cell (0: North, 1: East, 2: South, 3: West)
+        :param previous_position: Tuple[int, int], the position of the previous node
+        :param travel_direction: int, the direction of travel, so the direction at which the train left the previous cell (0: North, 1: East, 2: South, 3: West)
 
         Returns:
-            - next_position: Tuple[int, int], the position of the next node
-            - out_direction: int, the direction of travel at the next node
-            - rail_ID: int, the ID of the rail cluster at the next node, is None if the next node is a switch
-            - dead_end: bool, whether the next node is a dead end
+        :return next_position: Tuple[int, int], the position of the next node
+        :param out_direction: int, the direction of travel at the next node
+        :param rail_ID: int, the ID of the rail cluster at the next node, is None if the next node is a switch
+        :param dead_end: bool, whether the next node is a dead end
         """
         # first transition to new cell
         resources: List[Tuple[Tuple[int, int], int]] = []
+        station_ID: Union[int, str] = None
+        dead_end: bool = False
         out_direction: int = travel_direction
         n_transitions = 2
         depth = 0
@@ -144,6 +151,12 @@ class MultiDiGraphBuilder:
             n_transitions: int = np.sum(valid_transitions)
 
             if n_transitions == 2: 
+                # check if current position is a station
+                if self.stations:
+                    if current_position in self.station_lookup.keys():
+                        # resources.append((current_position, travel_direction)) # TODO: ensure this is correct
+                        station_ID = self.station_lookup[current_position]
+                        break
                 # continue in the new travel direction
                 resources.append((current_position, travel_direction))
                 travel_direction = fast_argmax(transitions)
@@ -154,14 +167,28 @@ class MultiDiGraphBuilder:
                     rail_ID = None
                 if n_transitions == 0:
                     raise ValueError("No valid transitions found at the current position.")
-                elif n_transitions > 2: # multiple transitions possible = switch                
-                    return current_position, (out_direction, travel_direction), rail_ID, resources, False
+                elif n_transitions > 2: # multiple transitions possible = switch  
+                    break
                 elif n_transitions == 1:  # only one transition possible = dead end
-                    return current_position, (out_direction, travel_direction), rail_ID, resources, True
+                    dead_end = True
+                    break
 
             if depth > self.max_depth:
-                raise ValueError("Maximum depth exceeded while finding next node.")                
-            
+                raise ValueError("Maximum depth exceeded while finding next node.") 
+
+        
+        edge_attr: Dict[str, Any] = {
+            'station ID': station_ID,
+            'rail_ID': rail_ID, # TODO: this doesn't consider stations as nodes, they are connected to the same railID
+            'out_direction': out_direction,
+            'in_direction': travel_direction,
+            'resources': resources, 
+            'length': len(resources),
+            'max_speed': None,
+            'dead_end': dead_end
+        }
+        return current_position, edge_attr, dead_end
+
 
     def _get_valid_transitions(self, position: Tuple[int, int]) -> Tuple[List[int], List[int]]:
         """ 
@@ -177,11 +204,14 @@ class MultiDiGraphBuilder:
         return valid_transitions, nonzero_transitions
 
 
-    def _add_node(self, node_position: Tuple[int, int], dead_end: bool = False):
+    def _add_node(self, node_position: Tuple[int, int], dead_end: bool = False, station_ID: Union[int, str] = None):
         """Add a node to the graph."""
         node_id: str = f"{node_position[0]}_{node_position[1]}"
-        self.nodes[node_id] = node_position
-        self.graph.add_node(node_position, position=node_position, dead_end=dead_end)
+        if station_ID:
+            self.stations_dict[station_ID] = node_position
+        else:
+            self.nodes[node_id] = node_position
+        self.graph.add_node(node_position, position=node_position, dead_end=dead_end, station_ID=station_ID)
 
 
     def _add_edge(self, u: Tuple[int, int], v: Tuple[int, int], attr=None):
@@ -218,35 +248,18 @@ class MultiDiGraphBuilder:
 
         nx.draw_networkx_edges(self.graph, pos, edge_color='black', connectionstyle=connection_style)
 
-        # edge_labels = {(u, v, k): f'{k}' for u, v, k in self.graph.edges(keys=True)}
         edge_labels = {
             (u, v, k): f"{d['attr']['rail_ID'] if d['attr']['rail_ID'] is not None else ''}"  # Default to '' if 'rail_ID' is None
             for u, v, k, d in self.graph.edges(keys=True, data=True)
         }
-        nx.draw_networkx_edge_labels(self.graph, pos, edge_labels=edge_labels, font_color='red', font_size=8)
-        # nx.draw(self.graph, 
-        #         pos=positions,
-        #         labels={node: node for node in self.graph.nodes()},
-        #         node_color=node_colours,
 
-        #         )
+        nx.draw_networkx_edge_labels(self.graph, pos, edge_labels=edge_labels, font_color='red', font_size=8)
         plt.axis('off')
         plt.show()
         if savepath:
             plt.savefig(savepath, bbox_inches='tight')
             
         plt.close()
-        # nx.draw(
-        #     self.graph, pos=positions, edge_color='black', width=1, linewidths=1,
-        #     node_size=200, node_color='lightgray', alpha=1.0, font_size=8,
-        #     labels={node: node for node in self.graph.nodes()}
-        # )
-
-        # nx.draw_networkx_edge_labels(
-        #     self.graph, pos=positions,
-        #     edge_labels={(u, v): f"{d['key']}" for u, v, d in self.graph.edges(data=True)},
-        #     font_color='red', font_size=8
-        # )
 
     def _reverse_direction(self, direction: int) -> int:
         """Reverse the direction."""
@@ -263,11 +276,30 @@ class MultiDiGraphBuilder:
                 self.rail_ID_mapping[rail_ID].append((u, v))
 
 
-if __name__ == "__main__":
-    # Example usage
-    from flatland.envs.rail_env import RailEnv
+    def _get_k_shortest_paths(self, source_node, target_node, k, weight=None) -> islice:
+        """
+        Find the k shortest paths in the graph.
 
-    # Assuming you have a RailEnv instance
-    env: RailEnv = small_flatland_env()
-    _ = env.reset()
-    graph_builder = MultiDiGraphBuilder(env)
+        :param source_node: The starting node.
+        :param target_node: The target node.
+        :param k: The number of shortest paths to find.
+        :param weight: The name of the edge attribute to consider for the paths
+        """
+        return islice(nx.shortest_simple_paths(self.graph, source_node, target_node, weight=weight), k)
+    
+
+    def identify_conflicts(self) -> None:
+        """
+        Identify conflicts in the graph based on overlapping paths.
+        """
+        station_nodes = self._get_station_nodes()
+        pass
+
+
+
+    def _get_station_nodes(self) -> List[str]:
+        station_nodes = []
+        for node, data in self.graph.nodes(data=True):
+            if 'station' in data and data['station']:
+                station_nodes.append(node)
+        return station_nodes
