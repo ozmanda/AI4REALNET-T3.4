@@ -96,8 +96,8 @@ class MultiAgentRolloutBuffer:
             for agent_handle in range(self.n_agents):
                 states.extend(episode['states'][agent_handle])
                 next_states.extend(episode['next_states'][agent_handle])
-                state_values.extend(episode['state_values'][agent_handle])
-                next_state_values.extend(episode['next_state_values'][agent_handle])
+                state_values.extend(episode['states'][agent_handle])
+                next_state_values.extend(episode['next_states'][agent_handle])
                 actions.extend(episode['actions'][agent_handle])
                 log_probs.extend(episode['log_probs'][agent_handle])
                 rewards.extend(episode['rewards'][agent_handle])
@@ -108,7 +108,7 @@ class MultiAgentRolloutBuffer:
             indices = torch.randperm(len(states))
             states = [states[i] for i in indices]
             next_states = [next_states[i] for i in indices]
-            state_values = [state_values[int(i)] for i in indices]
+            state_values = [state_values[i] for i in indices]
             next_state_values = [next_state_values[i] for i in indices]
             actions = [actions[i] for i in indices]
             log_probs = [log_probs[i] for i in indices]
@@ -159,7 +159,6 @@ class MultiAgentRolloutBuffer:
             combined_rollout.episodes.extend(rollout.episodes)
             combined_rollout.total_steps += rollout.total_steps
             combined_rollout.n_episodes += rollout.n_episodes
-            combined_rollout.agent_handles = rollout.agent_handles
         return combined_rollout
 
     def _len(self) -> int:
