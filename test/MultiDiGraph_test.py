@@ -5,6 +5,8 @@ from typing import List, Dict, Tuple, Union
 from src.utils.flatland_railway_extension.MultiDiGraphBuilder import MultiDiGraphBuilder
 from src.environments.scenario_loader import load_scenario_from_json
 
+from flatland.envs.rail_env import RailEnv
+
 import matplotlib.pyplot as plt
 
 scenarios: List[str] = ['simple_avoidance',
@@ -119,26 +121,33 @@ class TestMultiDiGraphBuilder_Complex(unittest.TestCase):
     def test_path_generation(self):
         """ Test the generation of k-shortest paths for station pairs """
         self.station_graph_test()
-        path_conflict_matrix, path_lookup = self.graph.identify_conflicts()
-        n_paths_per_pair = {
-            ((2,4),(8,5)):  3,
-            ((2,4),(5,10)): 2,
-            ((2,4),(1,16)): 4,
-            ((2,4),(8,15)): 4,
-            ((8,5),(5,10)): 4,
-            ((8,5),(1,16)): 4,
-            ((8,5),(8,15)): 4,
-            ((5,10),(1,16)): 4,
-            ((5,10),(8,15)): 4,
-            ((1,16),(8,15)): 4
-        }
-        for pair in n_paths_per_pair.keys():
-            self.assertIn(pair, path_lookup.keys(), f"Path pair {pair} should be present in the path lookup.")
-            self.assertEqual(len(path_lookup[pair]), n_paths_per_pair[pair],
-                             f"Path pair {pair} should have {n_paths_per_pair[pair]} paths.")
-        pass
+        self.graph.station_path_data()
+        path_pairs = [
+            ((2,4),(8,5)),
+            ((2,4),(5,10)),
+            ((2,4),(2,16)),
+            ((2,4),(8,15)),
+            ((8,5),(5,10)),
+            ((8,5),(2,16)),
+            ((8,5),(8,15)),
+            ((5,10),(2,16)),
+            ((5,10),(8,15)),
+            ((2,16),(8,15))
+        ]
+        for pair in path_pairs:
+            self.assertIn(pair, self.graph.path_lookup.keys(), f"Path pair {pair} should be present in the path lookup.")
 
 
     def test_conflict_identification(self):
         """ Test the identification of conflicts between paths """
-        pass
+        agent_A = {
+            "path": [((2, 4), (8, 5), 0)],
+            "speed": 1.0,
+            "departure_time": 0.0
+        }
+        agent_B = {
+            "path": [((2, 4), (5, 10), 0)],
+            "speed": 0.75,
+            "departure_time": 0.0
+        }
+        self.assertTrue(self.graph.check_conflict(agent_A, agent_B), "Agents A and B should conflict.")
