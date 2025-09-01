@@ -14,7 +14,7 @@ from flatland.envs.fast_methods import fast_position_equal, fast_argmax, fast_co
 # sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from src.utils.flatland_railway_extension.RailroadSwitchAnalyser import RailroadSwitchAnalyser
 from src.utils.flatland_railway_extension.RailroadSwitchCluster import RailroadSwitchCluster
-from src.environments.env_small import small_flatland_env
+from src.utils.graph.paths import PathGenerator
 from flatland.envs.rail_env_action import RailEnvActions
 
 n_directions: int = 4  # range [1:infty)
@@ -64,8 +64,8 @@ class MultiDiGraphBuilder:
         self.switch_clusters: np.ndarray = self.switch_clusters.railroad_switch_cluster_grid
 
     def _station_preprocessing(self, stations) -> None:
-        self.station_nodes = {f'{station["id"]}': (station['r'], station['c']) for station in stations}
-        self.station_lookup = {v: k for k, v in self.station_nodes.items()}
+        self.station_nodes: Dict[str, Tuple[int, int]] = {f'{station["id"]}': (station['r'], station['c']) for station in stations}
+        self.station_lookup: Dict[Tuple[int, int], Union[str, int]] = {v: k for k, v in self.station_nodes.items()}
 
     def _generate_graph(self) -> None:
         start_node = None
@@ -276,49 +276,8 @@ class MultiDiGraphBuilder:
                 self.rail_ID_mapping[rail_ID].append((u, v))
 
 
-    def _get_all_k_shortest_paths(self, k=4, weight='length'): 
-        """
-        Get the k-shortest paths between each every station-pair.
-        """
-        station_nodes = self.station_lookup.keys()
-        path_lookup: Dict[Tuple[Tuple[int, int], Tuple[int, int]], List[str]] = {}
-        paths: Dict[str, List] = []
-        for source_node in station_nodes:
-            for target_node in station_nodes:
-                if source_node != target_node:
-                    for k, path in enumerate(self._get_k_shortest_paths(source_node, target_node, k, weight=weight)):
-                        pathID = f"{source_node}_{target_node}_{k}"
-                        paths[pathID] = path
-                        path_lookup[(source_node, target_node)].append(pathID)
-        return path_lookup, paths
-                        
-
-    def _get_k_shortest_paths(self, source_node, target_node, k, weight=None) -> islice:
-        """
-        Find the k shortest paths in the graph.
-
-        :param source_node: The starting node.
-        :param target_node: The target node.
-        :param k: The number of shortest paths to find.
-        :param weight: The name of the edge attribute to consider for the paths
-        """
-        return islice(nx.shortest_simple_paths(self.graph, source_node, target_node, weight=weight), k)
-    
-
-    def _path_conflict_matrix(self, paths) -> np.ndarray:
-        path_conflict_matrix = np.zeros((len(paths), len(paths)))
-        for i, path in enumerate(paths):
-            for j, other_path in enumerate(paths):
-                if i != j and set(path) & set(other_path):
-                    path_conflict_matrix[i, j] = 1
-        return path_conflict_matrix
-
-
-    def identify_conflicts(self, k: int = 4, weight: str = 'length') -> Tuple[np.ndarray, Dict[Tuple[Tuple[int, int], Tuple[int, int]], List[str]]]:
-        """
-        Identify conflicts in the graph based on overlapping paths.
-        """
-        path_lookup, paths = self._get_all_k_shortest_paths(k=k, weight=weight)
-        path_conflict_matrix = self._path_conflict_matrix(paths)
-        return path_conflict_matrix, path_lookup
-
+    def station_path_data(self) -> None:
+        """ Calculate k-shortest paths between station nodes. """
+        path_generator = PathGenerator(self.graph, self.station_lookup)
+        self.path_lookup, self.paths = path_generator.get_k_shortest_paths()
+        self.conflict_matrix = path_generator.get_conflict_matrix(self.paths)
