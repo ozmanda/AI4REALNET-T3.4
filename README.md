@@ -17,4 +17,5 @@ The JBR_HSE group developed the best RL solution to the [Flatland challenge at N
 # Interpretable Communication
 The interpretable communication protocols and model architecture are currently WIPs and not functional. 
 
-
+## Negotiation
+WIP :)
