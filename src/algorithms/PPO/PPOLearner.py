@@ -18,7 +18,7 @@ from src.algorithms.PPO.PPOWorker import PPOWorker
 from src.configs.ControllerConfigs import PPOControllerConfig
 from src.algorithms.PPO.PPOController import PPOController
 from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
-from src.training.loss import value_loss, value_loss_with_IS, policy_loss
+from src.algorithms.loss import value_loss, value_loss_with_IS, policy_loss
 
 from flatland.envs.rail_env import RailEnv
 from src.configs.EnvConfig import FlatlandEnvConfig
@@ -90,7 +90,7 @@ class PPOLearner():
 
     def async_run(self) -> None:
         """
-        Asynchronous PPO training run. # TODO: fix this into a synchronous run, asynchronous is for IMPALA!
+        Synchronous PPO training run. # TODO: fix this into a synchronous run, asynchronous is for IMPALA!
         """
         # Broadcast initial weights to all workers, one for each worker, ensuring they start with the same model parameters
         # TODO: check if this is desirable (different initial starting points could be beneficial)
@@ -312,8 +312,7 @@ class PPOLearner():
             # Entropy bonus
             entropy_loss = -entropy.mean()  # Encourage exploration
 
-            # TODO: value_loss_coef and entropy_coef into config
-            # Total loss & optimisation step
+            # Total loss & optimisation step        # TODO: controller or learner config?
             total_loss: Tensor = actor_loss + critic_loss * self.controller.config['value_loss_coefficient'] + entropy_loss * self.controller.config['entropy_coefficient']
             return total_loss, actor_loss, critic_loss
         

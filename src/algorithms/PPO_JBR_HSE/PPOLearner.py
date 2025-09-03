@@ -7,7 +7,7 @@ from torch.distributions import Categorical
 
 from src.utils.tensor_utils import _permute_tensors
 from src.utils.obs_utils import calculate_state_size
-from src.training.loss import value_loss, value_loss_with_IS, policy_loss
+from src.algorithms.loss import value_loss, value_loss_with_IS, policy_loss
 
 from src.algorithms.PPO_JBR_HSE.PPOController import PPOController
 from src.algorithms.PPO_JBR_HSE.PPORollout import PPORollout
