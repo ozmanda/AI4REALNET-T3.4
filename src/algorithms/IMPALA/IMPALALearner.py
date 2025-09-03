@@ -18,7 +18,7 @@ from src.algorithms.IMPALA.IMPALAWorker import IMPALAWorker
 from src.configs.ControllerConfigs import PPOControllerConfig
 from src.algorithms.PPO.PPOController import PPOController
 from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
-from src.training.loss import value_loss, value_loss_with_IS, policy_loss
+from src.algorithms.loss import vtrace
 
 from flatland.envs.rail_env import RailEnv
 from src.configs.EnvConfig import FlatlandEnvConfig
@@ -46,6 +46,7 @@ class IMPALALearner():
         wandb.watch(self.controller.actor_network, log='all')
         wandb.watch(self.controller.critic_network, log='all')
 
+
     def _init_controller(self, config: PPOControllerConfig) -> None:
         self.controller_config = config
         self.n_nodes: int = config.config_dict['n_nodes']
@@ -53,7 +54,8 @@ class IMPALALearner():
         self.entropy_coeff: float = config.config_dict['entropy_coefficient']
         self.value_loss_coeff: float = config.config_dict['value_loss_coefficient']
         self.gamma: float = config.config_dict['gamma']
-        self.controller = config.create_controller()
+        self.controller: PPOController = config.create_controller()
+
 
     def _init_learning_params(self, learner_config: Dict) -> None:
         self.max_steps: int = learner_config['max_steps']
@@ -67,6 +69,9 @@ class IMPALALearner():
         self.importance_sampling: bool = learner_config['IS']
         self.episodes_infos: List[Dict] = []
         self.total_episodes: int = 0
+        self.c_bar: float = learner_config['c_bar']
+        self.rho_bar: float = learner_config['rho_bar']
+
 
     def _init_wandb(self, learner_config: Dict) -> None:
         """
@@ -80,12 +85,14 @@ class IMPALALearner():
         wandb.watch(self.controller.actor_network, log='all')
         wandb.watch(self.controller.critic_network, log='all')
 
+
     def _init_queues(self) -> None:
         # create queues
         self.logging_queue: mp.Queue = mp.Queue()
         self.rollout_queue: mp.Queue = mp.Queue()
         self.weights_queue: mp.Queue = mp.Queue()
         self.done_event: Event = mp.Event()
+
 
     def _build_optimizer(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
         if optimiser_config['type'] == 'adam': 
@@ -212,3 +219,10 @@ class IMPALALearner():
         """
         Compute the actor and critic loss for the given rollout buffer considering v-trace correction. 
         """
+        # compute log probs in target policy
+        _, target_log_probs = self.controller.sample_action(rollout['states'])
+
+        v_s, pg_adv = vtrace(rollout['log_probs'], target_log_probs, rollout['actions'], rollout['rewards'], rollout['values'],
+                             rollout['dones'], self.gamma, gamma = self.controller_config['gamma'], c_bar = self.c_bar, rho_bar = self.rho_bar)
+        
+        
