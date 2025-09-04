@@ -88,24 +88,22 @@ class PPOLearner():
         self.done_event: Event = mp.Event()
 
 
-    def async_run(self) -> None:
+    def sync_run(self) -> None:
         """
         Synchronous PPO training run. # TODO: fix this into a synchronous run, asynchronous is for IMPALA!
         """
         # Broadcast initial weights to all workers, one for each worker, ensuring they start with the same model parameters
-        # TODO: check if this is desirable (different initial starting points could be beneficial)
         controller_state = (self.controller.actor_network.state_dict(),
                             self.controller.critic_network.state_dict())
         for worker in range(self.n_workers):
             self.weights_queue.put(controller_state)
-            # TODO: ensure that workers only update when there are new weights
 
         # initialise learning rollout
         self.rollout = MultiAgentRolloutBuffer(n_agents=self.env_config.n_agents)
 
         # create and start workers
         # TODO: add device specification for the workers
-        mp.set_start_method('spawn')  # parallelisation of rollout gathering - spawn is safer for pytorch
+        mp.set_start_method('spawn', force=True)  # parallelisation of rollout gathering - spawn is safer for pytorch
         workers: List[PPOWorker] = []
         for worker_id in range(self.n_workers):
             worker = PPOWorker(worker_id=worker_id,
@@ -122,17 +120,20 @@ class PPOLearner():
 
         # gather rollouts and update when enough data is collected
         while self.completed_updates < self.target_updates:
-            # check episode logging
-            # self._log_episode_info()
-
-            # gather rollouts from workers
-            try: 
-                self._gather_rollouts()
-            except queue.Empty:
-                continue
+            self.rollout.reset(n_agents=self.env_config.n_agents)
+            worker_rollouts: List[Dict] = []
+            for _ in range(self.n_workers):
+                # gather rollouts from workers
+                try: 
+                    worker_rollout: Dict[str, List] = self.rollout_queue.get(timeout=60)
+                    self.rollout.add_episode(worker_rollout)
+                    print('Gathered rollout from worker')
+                except queue.Empty:
+                    print("Timeout: did not receive rollout from all workers.")
+                    continue
 
             # add the episode to the current rollout buffer
-            if self.rollout.total_steps > self.samples_per_update:
+            if self.rollout.total_steps >= self.samples_per_update:
                 # update the controller with the current rollout
                 self._optimise(rollout = self.rollout)
                 self.completed_updates += 1
@@ -221,7 +222,7 @@ class PPOLearner():
             'value_loss': []
         }
 
-        total_loss, actor_loss, critic_loss = self._loss(rollout, self.batch_size)
+        total_loss, actor_loss, critic_loss = self._loss(rollout)
 
         self.optimiser.zero_grad()
         total_loss.backward()
@@ -280,13 +281,14 @@ class PPOLearner():
         Calculate the loss for the actor and critic networks.
         """
         # forward pass through the actor network to get actions and log probabilities
-        new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(rollout['states'], rollout['next_states'], rollout['actions'])
+        transitions: Dict[str, Tensor] = rollout.get_transitions() # TODO: check that this is done correctly everywhere
+        new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(transitions['states'], transitions['next_states'], transitions['actions'])
         new_state_values = new_state_values.squeeze(-1)  
         new_next_state_values = new_next_state_values.squeeze(-1)
 
         # Policy loss
-        old_log_probs = rollout['log_probs']
-        actor_loss = policy_loss(gae=rollout['gaes'],
+        old_log_probs = transitions['log_probs']
+        actor_loss = policy_loss(gae=transitions['gaes'],
                                 new_log_prob=new_log_probs,
                                 old_log_prob=old_log_probs,
                                 clip_eps=self.controller.config['clip_epsilon'])
@@ -297,15 +299,15 @@ class PPOLearner():
                                             next_state_values=new_next_state_values,
                                             new_log_prob=new_log_probs,
                                             old_log_prob=old_log_probs,
-                                            reward=rollout['rewards'],
-                                            done=rollout['dones'],
+                                            reward=transitions['rewards'],
+                                            done=transitions['dones'],
                                             gamma=self.controller.config['gamma']
                                             )
         else:
             critic_loss = value_loss(state_values=new_state_values,
                                     next_state_values=new_next_state_values,
-                                    reward=rollout['rewards'],
-                                    done=rollout['dones'],
+                                    reward=transitions['rewards'],
+                                    done=transitions['dones'],
                                     gamma=self.controller.config['gamma'])
             
         # Entropy bonus
