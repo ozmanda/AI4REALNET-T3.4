@@ -194,7 +194,7 @@ class IMPALALearner():
             'policy_loss': [],
             'value_loss': []
         }
-
+        self._bootstrap_rollout(rollout)
         total_loss, actor_loss, critic_loss = self._loss(rollout, self.batch_size)
 
         self.optimiser.zero_grad()
@@ -219,10 +219,47 @@ class IMPALALearner():
         """
         Compute the actor and critic loss for the given rollout buffer considering v-trace correction. 
         """
-        # compute log probs in target policy
+        # forward pass to get actions and log probabilities
         _, target_log_probs = self.controller.sample_action(rollout['states'])
+        behaviour_log_probs = rollout['log_probs']
 
-        v_s, pg_adv = vtrace(rollout['log_probs'], target_log_probs, rollout['actions'], rollout['rewards'], rollout['values'],
-                             rollout['dones'], self.gamma, gamma = self.controller_config['gamma'], c_bar = self.c_bar, rho_bar = self.rho_bar)
+        # compute v-trace targets and advantages
+        v_s, pg_adv = vtrace(behaviour_log_probs, target_log_probs, rollout['actions'], rollout['rewards'], rollout['values'],
+                             rollout['dones'], gamma = self.controller_config['gamma'], rho_bar = self.rho_bar, c_bar = self.c_bar)
         
-        
+        # calculate value loss
+        value_loss = 0.5 * torch.mean((v_s.detach() - rollout['values'])**2)
+
+        # calculate policy gradient loss
+        policy_loss = -torch.mean(pg_adv * target_log_probs)
+
+        # entropy regularisation
+        entropy = -(target_log_probs.exp() * target_log_probs).sum(-1).mean()
+
+        # calculate total training loss
+        total_loss = policy_loss + self.value_loss_coeff * value_loss - self.entropy_coeff * entropy
+
+        return total_loss, {"policy_loss": policy_loss, 
+                            "value_loss": value_loss,
+                            "entropy_loss": entropy}
+
+    
+    def _bootstrap_rollout(self, rollout: MultiAgentRolloutBuffer) -> MultiAgentRolloutBuffer:
+        """
+        Bootstrap the rollout buffer by calculating the value of the last state for each trajectory.
+        """
+        # TODO: check dimensions!
+        with torch.no_grad():
+            _, _, last_state_values, _ = self.controller.evaluate_state(
+                rollout['next_states'][-1], rollout['next_states'][-1]
+            )
+        last_state_values = last_state_values.squeeze(-1)
+
+        # bootstrap the rollout buffer per trajectory
+        dones = rollout['dones'][-1]
+        for i in range(len(dones)):
+            if dones[i]:
+                rollout['values'][-1][i] = torch.tensor(0.0, device=last_state_values.device)
+            else:
+                rollout['values'][-1][i] = last_state_values[i]
+        return rollout

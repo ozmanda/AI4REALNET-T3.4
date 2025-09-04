@@ -63,7 +63,7 @@ class PPOWorker(mp.Process):
         """
         self.env.reset()
         self.rollout.reset(n_agents=self.env.number_of_agents)
-        self._try_refresh_weights()
+        self._wait_for_weights()
 
         episode_step = 0
         self.total_episodes = 0
@@ -101,7 +101,6 @@ class PPOWorker(mp.Process):
 
             if all(dones.values()) or episode_step >= self.max_steps_per_episode:
                 self._generalised_advantage_estimator()
-                # TODO: add IMPALA vtrace correction
                 self.rollout.end_episode()
                 current_state_dict, _ = self.env.reset()
                 current_state_tensor = obs_dict_to_tensor(observation=current_state_dict, 
@@ -118,8 +117,7 @@ class PPOWorker(mp.Process):
                                         'episode/reward': self.rollout.episodes[-1]['average_episode_reward'],
                                         'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})
 
-                # TODO: ensure only new weights taken
-                updated = self._try_refresh_weights()
+                self._wait_for_weights()
 
 
 
@@ -159,16 +157,15 @@ class PPOWorker(mp.Process):
 
                 self.rollout.current_episode['gaes'][agent] = gaes
 
-    def _try_refresh_weights(self):
-        updated = False
-        while True: 
-            try:
-                state = self.weights_queue.get_nowait()
-                self.controller.update_weights(state)
-                updated = True
-                print(f'Worker {self.worker_id} updated weights')
-                break
-            except queue.Empty:
-                break
-        return updated
+    def _wait_for_weights(self):
+        """
+        Wait for the learner to update weights, blocking until new weights are available.
+        This ensures rollouts are synchronous across all workers.
+        """
+        try:
+            state = self.weights_queue.get(timeout=None)  # blocking wait
+            self.controller.update_weights(state)
+            print(f'Worker {self.worker_id} updated weights')
+        except Exception as e:
+            print(f'Worker {self.worker_id} failed to get weights: {e}')
 
