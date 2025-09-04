@@ -88,7 +88,7 @@ class MultiAgentRolloutBuffer:
         self.n_episodes += 1
 
 
-    def get_transitions(self, shuffle: bool) -> Dict[str, Tensor]:
+    def get_transitions(self, shuffle: bool = False) -> Dict[str, Tensor]:
         """
         Flatten over all episodes agents and return a tensor for each transition value.
         """
