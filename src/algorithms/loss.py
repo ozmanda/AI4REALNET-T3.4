@@ -36,7 +36,7 @@ def policy_loss(gae: Tensor, new_log_prob: Tensor, old_log_prob: Tensor, clip_ep
 def vtrace(behaviour_log_probs: Tensor, target_log_probs: Tensor, actions: Tensor, rewards: Tensor, values: Tensor, 
            dones: Tensor, gamma: float, rho_bar: float = 1.0, c_bar: float = 1.0) -> Tuple[Tensor, Tensor]: 
     """
-    V-trace algorithm for off-policy actor-critic methods like IMPALA. 
+    V-trace algorithm for off-policy actor-critic methods like IMPALA. Assumes that the final states already contain the bootstrap values.
 
     Parameters: 
     - behaviour_log_probs: Log probabilities of the behaviour policy
@@ -44,7 +44,6 @@ def vtrace(behaviour_log_probs: Tensor, target_log_probs: Tensor, actions: Tenso
     - actions: Actions taken by the agent
     - rewards: Rewards received by the agent
     - values: State values predicted by the critic
-    - bootstrap_value: Bootstrap value for the last state
     - gamma: Discount factor
     - rho_bar: Importance sampling ratio (default: 1.0)
     - c_bar: Clipping parameter (default: 1.0)
@@ -65,8 +64,6 @@ def vtrace(behaviour_log_probs: Tensor, target_log_probs: Tensor, actions: Tenso
     rhos = torch.exp(target_log_probs - behaviour_log_probs)
     clipped_rhos = torch.clamp(rhos, max=rho_bar)
     cs = torch.clamp(rhos, max=c_bar)
-
-    # bootstrap values for t+1 indexing
 
     
     return v_s, advantages
