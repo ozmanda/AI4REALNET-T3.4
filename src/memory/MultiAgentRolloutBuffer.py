@@ -60,6 +60,15 @@ class MultiAgentRolloutBuffer:
         self.total_steps += 1
 
 
+    def add_episode(self, episode: Dict[str, List]) -> None:
+        """
+        Adds an external episode to the buffer
+        """
+        self.episodes.append(episode)
+        self.total_steps += np.sum(episode['episode_length'])
+        self.n_episodes += 1
+
+
     def end_episode(self, verbose: int = 0) -> None:
         agent_episode_rewards = []
         total_episode_length = 0
