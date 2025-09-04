@@ -116,17 +116,16 @@ class MultiAgentRolloutBuffer:
             gaes = [gaes[i] for i in indices]
             dones = [dones[i] for i in indices]
 
-        return {
-            'states': torch.stack(states).clone().detach(),
-            'next_states': torch.stack(next_states).clone().detach(),
-            'state_values': torch.stack(state_values).clone().detach(),
-            'next_state_values': torch.stack(next_state_values).clone().detach(),
-            'actions': torch.stack(actions).clone().detach(),
-            'log_probs': torch.stack(log_probs).clone().detach(),
-            'rewards': torch.tensor(rewards).clone().detach(),
-            'dones': torch.tensor(dones, dtype=torch.float32).clone().detach(),
-            'gaes': torch.stack(gaes).clone().detach()
-        }
+        return {'states': torch.stack(states).clone().detach(),
+                'next_states': torch.stack(next_states).clone().detach(),
+                'state_values': torch.stack(state_values).clone().detach(),
+                'next_state_values': torch.stack(next_state_values).clone().detach(),
+                'actions': torch.stack(actions).clone().detach(),
+                'log_probs': torch.stack(log_probs).clone().detach(),
+                'rewards': torch.tensor(rewards).clone().detach(),
+                'dones': torch.tensor(dones, dtype=torch.float32).clone().detach(),
+                'gaes': torch.stack(gaes).clone().detach()
+                }
     
     
     def get_minibatches(self, batch_size: int, shuffle: bool = False) -> List[Dict[str, Tensor]]:
@@ -149,7 +148,7 @@ class MultiAgentRolloutBuffer:
         self.total_steps += np.sum(episode['episode_length'])
         self.n_episodes += 1
 
-
+    
     def combine_rollouts(self, rollouts: List["MultiAgentRolloutBuffer"]) -> "MultiAgentRolloutBuffer":
         """
         Combines multiple rollouts into a single MultiAgentRolloutBuffer.
