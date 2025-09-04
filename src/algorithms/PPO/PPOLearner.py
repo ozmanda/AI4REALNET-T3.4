@@ -275,46 +275,45 @@ class PPOLearner():
         return metrics
     
     
-    def _loss(self, rollout: MultiAgentRolloutBuffer, batch_size: int) -> Tuple[Tensor, Tensor, Tensor]:
+    def _loss(self, rollout: MultiAgentRolloutBuffer) -> Tuple[Tensor, Tensor, Tensor]:
         """
         Calculate the loss for the actor and critic networks.
         """
-        for minibatch in rollout.get_minibatches(batch_size=batch_size, shuffle=False):
-            # forward pass through the actor network to get actions and log probabilities
-            new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(minibatch['states'], minibatch['next_states'], minibatch['actions'])
-            new_state_values = new_state_values.squeeze(-1)  
-            new_next_state_values = new_next_state_values.squeeze(-1)
+        # forward pass through the actor network to get actions and log probabilities
+        new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(rollout['states'], rollout['next_states'], rollout['actions'])
+        new_state_values = new_state_values.squeeze(-1)  
+        new_next_state_values = new_next_state_values.squeeze(-1)
 
-            # Policy loss
-            old_log_probs = minibatch['log_probs']
-            actor_loss = policy_loss(gae=minibatch['gaes'],
-                                    new_log_prob=new_log_probs,
-                                    old_log_prob=old_log_probs,
-                                    clip_eps=self.controller.config['clip_epsilon'])
+        # Policy loss
+        old_log_probs = rollout['log_probs']
+        actor_loss = policy_loss(gae=rollout['gaes'],
+                                new_log_prob=new_log_probs,
+                                old_log_prob=old_log_probs,
+                                clip_eps=self.controller.config['clip_epsilon'])
+        
+        # Value loss
+        if self.importance_sampling:
+            critic_loss = value_loss_with_IS(state_values=new_state_values,
+                                            next_state_values=new_next_state_values,
+                                            new_log_prob=new_log_probs,
+                                            old_log_prob=old_log_probs,
+                                            reward=rollout['rewards'],
+                                            done=rollout['dones'],
+                                            gamma=self.controller.config['gamma']
+                                            )
+        else:
+            critic_loss = value_loss(state_values=new_state_values,
+                                    next_state_values=new_next_state_values,
+                                    reward=rollout['rewards'],
+                                    done=rollout['dones'],
+                                    gamma=self.controller.config['gamma'])
             
-            # Value loss
-            if self.importance_sampling:
-                critic_loss = value_loss_with_IS(state_values=new_state_values,
-                                                next_state_values=new_next_state_values,
-                                                new_log_prob=new_log_probs,
-                                                old_log_prob=old_log_probs,
-                                                reward=minibatch['rewards'],
-                                                done=minibatch['dones'],
-                                                gamma=self.controller.config['gamma']
-                                                )
-            else:
-                critic_loss = value_loss(state_values=new_state_values,
-                                        next_state_values=new_next_state_values,
-                                        reward=minibatch['rewards'],
-                                        done=minibatch['dones'],
-                                        gamma=self.controller.config['gamma'])
-                
-            # Entropy bonus
-            entropy_loss = -entropy.mean()  # Encourage exploration
+        # Entropy bonus
+        entropy_loss = -entropy.mean()  # Encourage exploration
 
-            # Total loss & optimisation step        # TODO: controller or learner config?
-            total_loss: Tensor = actor_loss + critic_loss * self.controller.config['value_loss_coefficient'] + entropy_loss * self.controller.config['entropy_coefficient']
-            return total_loss, actor_loss, critic_loss
+        # Total loss & optimisation step        # TODO: controller or learner config?
+        total_loss: Tensor = actor_loss + critic_loss * self.controller.config['value_loss_coefficient'] + entropy_loss * self.controller.config['entropy_coefficient']
+        return total_loss, actor_loss, critic_loss
         
 
     def _evaluate(self, states: Tensor, next_states: Tensor, actions: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
