@@ -26,6 +26,10 @@ class PPO_Test(unittest.TestCase):
         self.learner_config = config['learner_config']
         self.learner_config['n_workers'] = 4
 
+        # reduce training time for testing purposes
+        self.learner_config['target_updates'] = 2
+        self.learner_config['max_steps_per_episode'] = 100
+
         # prepare controller
         controller_config = config['controller_config']
         controller_config['n_nodes'], controller_config['state_size'] = calculate_state_size(self.env_config.observation_builder_config['max_depth'])

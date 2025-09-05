@@ -6,6 +6,7 @@ import queue
 import torch
 from torch import Tensor
 import torch.multiprocessing as mp
+from multiprocessing.managers import DictProxy
 from multiprocessing.synchronize import Event
 
 from src.utils.obs_utils import obs_dict_to_tensor
@@ -23,7 +24,7 @@ class PPOWorker(mp.Process):
     """
 
     def __init__(self, worker_id: Union[str, int], env_config: FlatlandEnvConfig, controller_config: PPOControllerConfig, 
-                 logging_queue: mp.Queue, rollout_queue: mp.Queue, weights_queue: mp.Queue, done_event: Event,
+                 logging_queue: mp.Queue, rollout_queue: mp.Queue, barrier, shared_weights, done_event: Event,
                  max_steps: Tuple = (10000, 1000), device: str = 'cpu'):
         super().__init__()
 
@@ -31,9 +32,11 @@ class PPOWorker(mp.Process):
         self.worker_id: Union[str, int] = worker_id
         self.logging_queue: mp.Queue = logging_queue
         self.rollout_queue: mp.Queue = rollout_queue
-        self.weights_queue: mp.Queue = weights_queue
+        self.shared_weights: DictProxy = shared_weights
+        self.barrier = barrier
         self.done_event: Event = done_event
         self.device: str = device
+        self.local_update_step: int = 0
 
         # env and controller setup
         self.env_config: FlatlandEnvConfig = env_config
@@ -116,9 +119,9 @@ class PPOWorker(mp.Process):
                                         'episode': self.total_episodes,
                                         'episode/reward': self.rollout.episodes[-1]['average_episode_reward'],
                                         'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})
-
-                self._wait_for_weights()
-
+                if not self.done_event.is_set():
+                    self._wait_for_weights()
+        
 
 
     def _generalised_advantage_estimator(self) -> Tensor:
@@ -157,15 +160,14 @@ class PPOWorker(mp.Process):
 
                 self.rollout.current_episode['gaes'][agent] = gaes
 
+
     def _wait_for_weights(self):
         """
         Wait for the learner to update weights, blocking until new weights are available.
         This ensures rollouts are synchronous across all workers.
         """
-        try:
-            state = self.weights_queue.get(timeout=None)  # blocking wait
-            self.controller.update_weights(state)
-            print(f'Worker {self.worker_id} updated weights')
-        except Exception as e:
-            print(f'Worker {self.worker_id} failed to get weights: {e}')
-
+        self.barrier.wait()
+        if self.shared_weights['update_step'] > self.local_update_step:
+            self.local_update_step = self.shared_weights['update_step']
+            self.controller.update_weights(self.shared_weights['controller_state'])
+            print(f'Worker {self.worker_id} updated weights\n')

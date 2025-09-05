@@ -13,6 +13,7 @@ from torch import Tensor
 import torch.optim as optim
 import torch.multiprocessing as mp
 from multiprocessing.synchronize import Event
+from multiprocessing.managers import DictProxy
 
 from src.algorithms.PPO.PPOWorker import PPOWorker
 from src.configs.ControllerConfigs import PPOControllerConfig
@@ -72,11 +73,11 @@ class PPOLearner():
         """
         Initialize Weights & Biases for logging.
         """
+        self.run_name = learner_config['run_name']
         wandb.init(project='AI4REALNET-T3.4', entity='CLS-FHNW', config=learner_config, reinit=True)
         wandb.run.define_metric('episodes/*', step_metric='episode')
         wandb.run.define_metric('train/*', step_metric='update_step')
-        wandb.run.name = f"{learner_config['run_name']}_PPO"
-        wandb.run.save()
+        wandb.run.name = f"{self.run_name}_PPO"
         wandb.watch(self.controller.actor_network, log='all')
         wandb.watch(self.controller.critic_network, log='all')
 
@@ -84,19 +85,19 @@ class PPOLearner():
         # create queues
         self.logging_queue: mp.Queue = mp.Queue()
         self.rollout_queue: mp.Queue = mp.Queue()
-        self.weights_queue: mp.Queue = mp.Queue()
+        # self.weights_queue: mp.Queue = mp.Queue()
+        self.barrier = mp.Barrier(self.n_workers + 1)  # +1 for the learner process
+        self.manager = mp.Manager()
         self.done_event: Event = mp.Event()
 
 
     def sync_run(self) -> None:
         """
-        Synchronous PPO training run. # TODO: fix this into a synchronous run, asynchronous is for IMPALA!
+        Synchronous PPO training run.
         """
         # Broadcast initial weights to all workers, one for each worker, ensuring they start with the same model parameters
-        controller_state = (self.controller.actor_network.state_dict(),
-                            self.controller.critic_network.state_dict())
-        for worker in range(self.n_workers):
-            self.weights_queue.put(controller_state)
+        self.shared_weights: DictProxy = self.manager.dict()
+        self._broadcast_controller_state()
 
         # initialise learning rollout
         self.rollout = MultiAgentRolloutBuffer(n_agents=self.env_config.n_agents)
@@ -109,7 +110,8 @@ class PPOLearner():
             worker = PPOWorker(worker_id=worker_id,
                                logging_queue=self.logging_queue,
                                rollout_queue=self.rollout_queue,
-                               weights_queue=self.weights_queue,
+                               shared_weights=self.shared_weights,
+                               barrier=self.barrier,
                                done_event=self.done_event,
                                env_config=self.env_config,
                                controller_config=self.controller_config,
@@ -117,19 +119,20 @@ class PPOLearner():
                                device='cpu')
             workers.append(worker)
             worker.start()
+        self.barrier.wait()  # wait for all workers to be ready
 
         # gather rollouts and update when enough data is collected
         while self.completed_updates < self.target_updates:
+            # reset rollout for next update
             self.rollout.reset(n_agents=self.env_config.n_agents)
-            worker_rollouts: List[Dict] = []
+            self.barrier.wait()  # wait for workers to finish their rollout
             for _ in range(self.n_workers):
                 # gather rollouts from workers
                 try: 
-                    worker_rollout: Dict[str, List] = self.rollout_queue.get(timeout=60)
-                    self.rollout.add_episode(worker_rollout)
-                    print('Gathered rollout from worker')
-                except queue.Empty:
-                    print("Timeout: did not receive rollout from all workers.")
+                    self._gather_rollout()
+                    
+                except Exception as e:
+                    print(f"Error: {e}")
                     continue
 
             # add the episode to the current rollout buffer
@@ -138,28 +141,28 @@ class PPOLearner():
                 self._optimise(rollout = self.rollout)
                 self.completed_updates += 1
                 print(f'\n\nCompleted Updates: {self.completed_updates} / {self.target_updates}\n\n')
-                
-                wandb.log({
-                    'train/update': self.completed_updates,
-                    'train/samples_this_update': self.rollout.total_steps
-                })
 
-                # reset rollout
-                self.rollout.reset(n_agents=self.env_config.n_agents)
-
+                wandb.log({'train/average_episode_reward': np.mean([ep['average_episode_reward'] for ep in self.rollout.episodes])})
 
                 # broadcast updated controller weights
-                controller_state = (self.controller.actor_network.state_dict(),
-                                    self.controller.critic_network.state_dict())
-                for worker in workers:
-                    worker.weights_queue.put(controller_state)
+                self._broadcast_controller_state()
 
 
+        # Wait for all workers to finish their last trajectory collections
         self.done_event.set()
-        time.sleep(1)
-
         # drain any final episode info
-        self._log_episode_info()
+        for _ in range(self.n_workers):
+            try:
+                self._gather_rollout()
+            except queue.Empty:
+                continue
+
+        # final controller update
+        self._optimise(rollout=self.rollout)
+        self.completed_updates += 1
+        wandb.log({
+            'train/average_episode_reward': np.mean([ep['average_episode_reward'] for ep in self.rollout.episodes]),
+        })
 
         # terminate all workers
         for w in workers:
@@ -170,12 +173,27 @@ class PPOLearner():
         
         wandb.finish()
 
+        savepath = os.path.join('models', f'{self.run_name}')
+        os.makedirs(savepath, exist_ok=True)
+        torch.save(self.controller.actor_network.state_dict(), os.path.join(savepath, 'actor_model.pth'))
+        torch.save(self.controller.critic_network.state_dict(), os.path.join(savepath, 'critic_model.pth'))
 
-    def _gather_rollouts(self) -> None:
-        """ Gathter episodes from rollout queue and add to training rollout. """
-        episode = self.rollout_queue.get(timeout=1)
-        self.rollout.add_episode(episode)
-        print('Gathered episode')
+
+    def _gather_rollout(self) -> None:
+        """ Gather episodes from rollout queue and add to training rollout. """
+        worker_rollout: Dict[str, List] = self.rollout_queue.get(timeout=60)
+        self.rollout.add_episode(worker_rollout)
+        self._log_episode_info()
+
+
+    def _broadcast_controller_state(self) -> None:
+        """
+        Push the current controller state to the shared dictionary for workers to access.
+        """
+        controller_state = (self.controller.actor_network.state_dict(),
+                            self.controller.critic_network.state_dict())
+        self.shared_weights['controller_state'] = controller_state
+        self.shared_weights['update_step'] = self.update_step
 
 
     def _log_episode_info(self):
@@ -194,7 +212,7 @@ class PPOLearner():
             pass
 
 
-    def worker_entry(self, worker_id: int, queue: mp.Queue) -> None:
+    def worker_entry(self, queue: mp.Queue) -> None:
         """
         Entry point for each worker to run the PPOWorker.
         """
@@ -240,40 +258,6 @@ class PPOLearner():
             'train/value_loss': np.mean(losses['value_loss'])
         })
         return losses
-
-
-    def run(self) -> Dict:
-        n_episodes = 0
-        metrics: Dict[List] = {
-            'rewards': [],
-            'policy_loss': [],
-            'value_loss': []
-        }
-
-        self.total_steps = 0
-        for epoch in range(self.iterations):
-            print(f'\nEpoch {epoch + 1}/{self.iterations}')
-            while self.total_steps < self.max_steps:
-                rollout = self.gather_rollout()
-                self._calculate_metrics(rollout)
-                n_episodes += len(rollout.episodes)
-                losses = self._optimise(rollout)
-                self.total_steps += rollout.total_steps
-
-                episode_rewards = [episode['average_episode_reward'] for episode in rollout.episodes]
-                average_episode_reward = sum(episode_rewards) / len(episode_rewards)
-                print(f'\nTotal Steps: {self.total_steps}, Total Episodes: {n_episodes}, Average Episode Reward: {average_episode_reward}')
-                
-                # TODO: add this to wandb
-                # metric information 
-                metrics['policy_loss'].extend(losses['policy_loss'])
-                metrics['value_loss'].extend(losses['value_loss'])
-                metrics['rewards'].extend(episode_rewards)
-
-            self.total_steps = 0
-
-
-        return metrics
     
     
     def _loss(self, rollout: MultiAgentRolloutBuffer) -> Tuple[Tensor, Tensor, Tensor]:
@@ -329,20 +313,3 @@ class PPOLearner():
         state_values = self.controller.critic_network(states)
         next_state_values = self.controller.critic_network(next_states)
         return log_probs, entropy, state_values, next_state_values
-    
-
-    def _calculate_metrics(self, rollout: MultiAgentRolloutBuffer) -> None:
-        """
-        Calculate metrics from the collected rollout.
-        
-        :param rollout: The collected rollout buffer.
-        :return: A dictionary containing the calculated metrics.
-        """
-        for episode in rollout.episodes:
-            episode_length = episode['episode_length']
-            self.episodes_infos.append({
-                'episode_length': episode_length,
-                'total_steps': rollout.total_steps,
-                'n_agents': rollout.n_agents, 
-                'episode_reward': episode['average_episode_reward'],
-            })
