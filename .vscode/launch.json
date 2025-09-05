@@ -23,10 +23,10 @@
             ]
         },
         {
-            "name": "ppo_train.py",
+            "name": "ppo.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "ppo_train.py",
+            "program": "run/ppo.py",
             "console": "integratedTerminal",
         }
     ]
