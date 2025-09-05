@@ -7,6 +7,7 @@ import torch
 from torch import Tensor
 import torch.multiprocessing as mp
 from multiprocessing.synchronize import Event
+from multiprocessing.managers import DictProxy
 
 from src.utils.obs_utils import obs_dict_to_tensor
 from src.configs.EnvConfig import FlatlandEnvConfig
@@ -21,7 +22,7 @@ class IMPALAWorker(mp.Process):
     """
 
     def __init__(self, worker_id: Union[str, int], env_config: FlatlandEnvConfig, controller_config: PPOControllerConfig, 
-                 logging_queue: mp.Queue, rollout_queue: mp.Queue, weights_queue: mp.Queue, done_event: Event,
+                 logging_queue: mp.Queue, rollout_queue: mp.Queue, shared_weights: DictProxy, barrier, done_event: Event,
                  max_steps: Tuple = (10000, 1000), device: str = 'cpu'):
         super().__init__()
 
@@ -29,9 +30,11 @@ class IMPALAWorker(mp.Process):
         self.worker_id: Union[str, int] = worker_id
         self.logging_queue: mp.Queue = logging_queue
         self.rollout_queue: mp.Queue = rollout_queue
-        self.weights_queue: mp.Queue = weights_queue
+        self.shared_weights: DictProxy = shared_weights
+        self.barrier = barrier
         self.done_event: Event = done_event
         self.device: str = device
+        self.policy_update_step: int = 0
 
         # env and controller setup
         self.env_config: FlatlandEnvConfig = env_config
@@ -52,6 +55,7 @@ class IMPALAWorker(mp.Process):
         self.obs_type: str = self.env_config.observation_builder_config['type']
         self.max_depth: int = self.env_config.observation_builder_config['max_depth']
         self.env: RailEnv = self.env_config.create_env()
+
 
     def run(self) -> MultiAgentRolloutBuffer:
         """
@@ -97,8 +101,6 @@ class IMPALAWorker(mp.Process):
             episode_step += 1
 
             if all(dones.values()) or episode_step >= self.max_steps_per_episode:
-                self._generalised_advantage_estimator()
-                # TODO: add IMPALA vtrace correction
                 self.rollout.end_episode()
                 current_state_dict, _ = self.env.reset()
                 current_state_tensor = obs_dict_to_tensor(observation=current_state_dict, 
@@ -115,30 +117,20 @@ class IMPALAWorker(mp.Process):
                                         'episode/reward': self.rollout.episodes[-1]['average_episode_reward'],
                                         'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})
 
-                # TODO: ensure only new weights taken
-                self._vtrace_correction
-                updated = self._try_refresh_weights()
+                self._vtrace_correction()
+                self._try_refresh_weights()
 
 
     def _vtrace_correction(self) -> None:
         """
         Apply v-trace correction to the rollout buffer.
         """
-        traj_len = self.rollout.total_steps
+        # TODO: implement v-trace correction
+        pass
 
         
-
-
-
     def _try_refresh_weights(self):
-        updated = False
-        while True: 
-            try:
-                state = self.weights_queue.get_nowait()
-                self.controller.update_weights(state)
-                updated = True
-                print(f'Worker {self.worker_id} updated weights')
-                break
-            except queue.Empty:
-                break
-        return updated
+        if self.policy_update_step < self.shared_weights['update_step']:
+            self.policy_update_step = self.shared_weights['update_step']
+            self.controller.load_state_dict(self.shared_weights['controller_state'])
+            print(f'Worker {self.worker_id} updated')

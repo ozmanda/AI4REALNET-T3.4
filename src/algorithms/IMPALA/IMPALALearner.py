@@ -13,6 +13,7 @@ from torch import Tensor
 import torch.optim as optim
 import torch.multiprocessing as mp
 from multiprocessing.synchronize import Event
+from multiprocessing.managers import DictProxy
 
 from src.algorithms.IMPALA.IMPALAWorker import IMPALAWorker
 from src.configs.ControllerConfigs import PPOControllerConfig
@@ -91,6 +92,9 @@ class IMPALALearner():
         self.logging_queue: mp.Queue = mp.Queue()
         self.rollout_queue: mp.Queue = mp.Queue()
         self.weights_queue: mp.Queue = mp.Queue()
+        self.manager = mp.Manager()
+        self.shared_weights: DictProxy = self.manager.dict()
+        self.barrier = mp.Barrier(self.n_workers + 1)  # +1 for the learner
         self.done_event: Event = mp.Event()
 
 
@@ -109,11 +113,7 @@ class IMPALALearner():
         """
         # Broadcast initial weights to all workers, one for each worker, ensuring they start with the same model parameters
         # TODO: check if this is desirable (different initial starting points could be beneficial)
-        controller_state = (self.controller.actor_network.state_dict(),
-                            self.controller.critic_network.state_dict())
-        for worker in range(self.n_workers):
-            self.weights_queue.put(controller_state)
-            # TODO: ensure that workers only update when there are new weights
+        self._broadcast_controller_state()
 
         # initialise learning rollout
         self.rollout = MultiAgentRolloutBuffer(n_agents=self.env_config.n_agents)
@@ -126,7 +126,8 @@ class IMPALALearner():
             worker = IMPALAWorker(worker_id=worker_id,
                                logging_queue=self.logging_queue,
                                rollout_queue=self.rollout_queue,
-                               weights_queue=self.weights_queue,
+                               shared_weights=self.shared_weights,
+                               barrier=self.barrier,
                                done_event=self.done_event,
                                env_config=self.env_config,
                                controller_config=self.controller_config,
@@ -137,9 +138,6 @@ class IMPALALearner():
 
         # gather rollouts and update when enough data is collected
         while self.completed_updates < self.target_updates:
-            # check episode logging
-            # self._log_episode_info()
-
             # gather rollouts from workers
             try: 
                 self._gather_rollouts()
@@ -161,16 +159,12 @@ class IMPALALearner():
                 # reset rollout
                 self.rollout.reset(n_agents=self.env_config.n_agents)
 
-
                 # broadcast updated controller weights
-                controller_state = (self.controller.actor_network.state_dict(),
-                                    self.controller.critic_network.state_dict())
-                for worker in workers:
-                    worker.weights_queue.put(controller_state)
+                self._broadcast_controller_state()
 
 
         self.done_event.set()
-        time.sleep(1)
+        self.barrier.wait()  # ensure all workers have finished
 
         # drain any final episode info
         self._log_episode_info()
@@ -190,29 +184,19 @@ class IMPALALearner():
         """
         Optimise the model parameters using the collected rollouts.
         """
-        losses = {
-            'policy_loss': [],
-            'value_loss': []
-        }
         self._bootstrap_rollout(rollout)
-        total_loss, actor_loss, critic_loss = self._loss(rollout, self.batch_size)
+        total_loss, loss_dict = self._loss(rollout, self.batch_size)
 
         self.optimiser.zero_grad()
         total_loss.backward()
         self.optimiser.step()
         self.update_step += 1
 
-        # add metrics
-        losses['policy_loss'].append(actor_loss.mean().item())
-        losses['value_loss'].append(critic_loss.mean().item())
-
-        # Log losses to wandb
-        wandb.log({
-            'update_step': self.update_step,
-            'train/policy_loss': np.mean(losses['policy_loss']),
-            'train/value_loss': np.mean(losses['value_loss'])
-        })
-        return losses
+        # log to wandb
+        wandb_log_dict = {'update_step': self.update_step}
+        for loss_key in loss_dict.keys():
+            wandb_log_dict[loss_key] = loss_dict[loss_key].mean().item()
+        wandb.log(wandb_log_dict)
     
 
     def _loss(self, rollout: MultiAgentRolloutBuffer, batch_size: int) -> Tuple[Tensor, Tensor, Tensor]:
@@ -263,3 +247,38 @@ class IMPALALearner():
             else:
                 rollout['values'][-1][i] = last_state_values[i]
         return rollout
+    
+    
+    def _gather_rollouts(self) -> None:
+        """ Gather episodes from rollout queue and add to training rollout. """
+        for _ in range(self.n_workers):
+            try:
+                worker_rollout: Dict[str, List] = self.rollout_queue.get(timeout=60)
+                self.rollout.add_episode(worker_rollout)
+                self._log_episode_info()
+            except queue.Empty:
+                break
+
+
+    def _broadcast_controller_state(self) -> None:
+        """ Push the current controller state to the shared dictionary for workers to access. """
+        controller_state = (self.controller.actor_network.state_dict(),
+                            self.controller.critic_network.state_dict())
+        self.shared_weights['controller_state'] = controller_state
+        self.shared_weights['update_step'] = self.update_step
+
+        
+    def _log_episode_info(self):
+        """ Log episode information to Weights & Biases. """
+        try: 
+            while True: 
+                log_info = self.logging_queue.get_nowait()
+                worker_id = log_info['worker_id']
+                wandb.log({
+                    f'worker_{worker_id}/episode_reward': log_info['episode/reward'],
+                    f'worker_{worker_id}/episode_length': log_info['episode/average_length'],
+                    # global aggregated metrics
+                    'episode/average_reward': log_info['episode/reward'],
+                })
+        except queue.Empty:
+            pass
