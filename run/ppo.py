@@ -27,7 +27,7 @@ def train_ppo(random_seed: int, controller_config: PPOControllerConfig, learner_
                          learner_config=learner_config,
                          env_config=env_config,
                          device=device)
-    learner.async_run()
+    learner.sync_run()
 
 
 def init_random_seeds(random_seed: int, cuda_deterministic: bool = False) -> None:
