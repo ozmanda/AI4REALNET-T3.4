@@ -26,6 +26,7 @@ class MultiAgentRolloutBuffer:
         self.n_agents = n_agents
         self.episodes: List = []
         self._reset_current_episode()
+        self.total_steps = 0
 
 
     def _reset_current_episode(self) -> None:
@@ -40,15 +41,27 @@ class MultiAgentRolloutBuffer:
             'dones': [[] for _ in range(self.n_agents)],
             'gaes': [[] for _ in range(self.n_agents)],
             'episode_length': [0 for _ in range(self.n_agents)],
+            'episode_reward': [0.0 for _ in range(self.n_agents)],
             'average_episode_length': 0,
             'average_episode_reward': 0.0
         }
 
 
-    def add_transitions(self, states: Tensor, actions: Dict[Union[int, str], int], log_probs: Dict[Union[int, str], float], 
-                        rewards: Dict[Union[int, str], float], next_states: Tensor, dones: Dict[Union[int, str], bool]) -> None:
+    def add_transitions(self, states: Tensor, actions: Dict[Union[int, str], int], log_probs: Tensor, 
+                        rewards: Dict[Union[int, str], float], next_states: Tensor, dones: Dict[Union[int, str], bool],
+                        state_values: Tensor, next_state_values: Tensor) -> None:
         """
         Adds a transition to the buffer.
+
+        Parameters:
+            - states: Tensor (n_agents, state_size)
+            - actions: Tensor (n_agents,)
+            - log_probs: Tensor (n_agents,)
+            - rewards: Dict[agent_id, reward] (n_agents,)
+            - next_states: Tensor (n_agents, state_size)
+            - dones: Dict[agent_id, done] (n_agents,)
+            - state_values: Tensor (n_agents, 1)
+            - next_state_values: Tensor (n_agents, 1)
         """
         for agent_handle in range(self.n_agents):
             self.current_episode['states'][agent_handle].append(states[agent_handle])
@@ -57,6 +70,9 @@ class MultiAgentRolloutBuffer:
             self.current_episode['rewards'][agent_handle].append(rewards[agent_handle])
             self.current_episode['next_states'][agent_handle].append(next_states[agent_handle])
             self.current_episode['dones'][agent_handle].append(dones[agent_handle])
+            if state_values is not None and next_state_values is not None:
+                self.current_episode['state_values'][agent_handle].append(state_values[agent_handle])
+                self.current_episode['next_state_values'][agent_handle].append(next_state_values[agent_handle])
         self.total_steps += 1
 
 
@@ -70,14 +86,12 @@ class MultiAgentRolloutBuffer:
 
 
     def end_episode(self, verbose: int = 0) -> None:
-        agent_episode_rewards = []
-        total_episode_length = 0
         for agent in range(self.n_agents):
             self.current_episode['episode_length'][agent] += len(self.current_episode['states'][agent])
-            agent_episode_rewards.append(sum(self.current_episode['rewards'][agent]) / len(self.current_episode['rewards'][agent]))
+            self.current_episode['episode_reward'][agent] = sum(self.current_episode['rewards'][agent]) / len(self.current_episode['rewards'][agent])
 
         self.current_episode['average_episode_length'] = np.sum(self.current_episode['episode_length']) / self.n_agents
-        self.current_episode['average_episode_reward'] = sum(agent_episode_rewards) / self.n_agents
+        self.current_episode['average_episode_reward'] = sum(self.current_episode['episode_reward']) / self.n_agents
 
         if verbose > 0:
             print(f"\nEpisode {self.n_episodes + 1} - Average Reward: {self.current_episode['average_episode_reward']}\n")
@@ -106,8 +120,8 @@ class MultiAgentRolloutBuffer:
             for agent_handle in range(self.n_agents):
                 states.extend(episode['states'][agent_handle])
                 next_states.extend(episode['next_states'][agent_handle])
-                state_values.extend(episode['states'][agent_handle])
-                next_state_values.extend(episode['next_states'][agent_handle])
+                state_values.extend(episode['state_values'][agent_handle])
+                next_state_values.extend(episode['next_state_values'][agent_handle])
                 actions.extend(episode['actions'][agent_handle])
                 log_probs.extend(episode['log_probs'][agent_handle])
                 rewards.extend(episode['rewards'][agent_handle])
@@ -128,15 +142,18 @@ class MultiAgentRolloutBuffer:
             if gaes:
                 gaes = [gaes[i] for i in indices]
 
-        return_dict: Dict = {'states': torch.stack(states).clone().detach(),
-                'next_states': torch.stack(next_states).clone().detach(),
-                'state_values': torch.stack(state_values).clone().detach(),
-                'next_state_values': torch.stack(next_state_values).clone().detach(),
-                'actions': torch.stack(actions).clone().detach(),
-                'log_probs': torch.stack(log_probs).clone().detach(),
-                'rewards': torch.tensor(rewards).clone().detach(),
-                'dones': torch.tensor(dones, dtype=torch.float32).clone().detach()
-                }
+        try:
+            return_dict: Dict = {'states': torch.stack(states).clone().detach(),
+                    'next_states': torch.stack(next_states).clone().detach(),
+                    'state_values': torch.stack(state_values).clone().detach(),
+                    'next_state_values': torch.stack(next_state_values).clone().detach(),
+                    'actions': torch.stack(actions).clone().detach(),
+                    'log_probs': torch.stack(log_probs).clone().detach(),
+                    'rewards': torch.tensor(rewards).clone().detach(),
+                    'dones': torch.tensor(dones, dtype=torch.float32).clone().detach()
+                    }
+        except RuntimeError:
+            return None
         if gaes:
             return_dict['gaes'] = torch.stack(gaes).clone().detach()
 
