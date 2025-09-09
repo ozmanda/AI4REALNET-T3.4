@@ -5,6 +5,7 @@
     "version": "0.2.0",
     "configurations": [
 
+
         {
             "name": "main.py",
             "type": "debugpy",
@@ -23,10 +24,17 @@
             ]
         },
         {
-            "name": "ppo.py",
+            "name": "PPO Synchronous",
             "type": "debugpy",
             "request": "launch",
             "program": "run/ppo.py",
+            "console": "integratedTerminal",
+        },
+        {
+            "name": "IMPALA Asynchronous",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "run/impala.py",
             "console": "integratedTerminal",
         }
     ]
