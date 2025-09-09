@@ -33,14 +33,14 @@ def policy_loss(gae: Tensor, new_log_prob: Tensor, old_log_prob: Tensor, clip_ep
     return actor_loss
 
 
-def vtrace(behaviour_log_probs: Tensor, target_log_probs: Tensor, actions: Tensor, rewards: Tensor, values: Tensor, 
+def vtrace(behaviour_log_probs: Tensor, target_log_probs: Tensor, actions: Tensor, rewards: Tensor, state_values: Tensor, next_state_values: Tensor,
            dones: Tensor, gamma: float, rho_bar: float = 1.0, c_bar: float = 1.0) -> Tuple[Tensor, Tensor]: 
     """
     V-trace algorithm for off-policy actor-critic methods like IMPALA. Assumes that the final states already contain the bootstrap values.
 
     Parameters: 
-    - behaviour_log_probs: Log probabilities of the behaviour policy
-    - target_log_probs: Log probabilities of the target policy
+    - behaviour_log_probs: Log probabilities of the behaviour policy at the chosen actions
+    - target_log_probs: Log probabilities of the target policy at the chosen actions
     - actions: Actions taken by the agent
     - rewards: Rewards received by the agent
     - values: State values predicted by the critic
@@ -52,18 +52,13 @@ def vtrace(behaviour_log_probs: Tensor, target_log_probs: Tensor, actions: Tenso
     - v_s: corrected value targets
     - pg_adv: policy gradient advantages
     """
-    v_s = None
-    advantages = None
-    trajectory_length, batchsize = actions.shape()
-
-    # gather log probs for actions taken
-    target_log_probs = target_log_probs.gather(-1, actions.unsqueeze(-1)).squeeze(-1)
-    behaviour_log_probs = behaviour_log_probs.gather(-1, actions.unsqueeze(-1)).squeeze(-1)
-
-    # IS ratios
+    # calculate advantages
+    advantages = rewards + gamma * next_state_values * (1 - dones) - state_values
     rhos = torch.exp(target_log_probs - behaviour_log_probs)
-    clipped_rhos = torch.clamp(rhos, max=rho_bar)
+    clipped_rhos = torch.clamp(rhos, max=rho_bar) # same as min(rho_bar, rhos)
     cs = torch.clamp(rhos, max=c_bar)
 
+    v_s = torch.zeros_like(state_values)
+    v_s = state_values + clipped_rhos * advantages + gamma * cs * (v_s - next_state_values) * (1 - dones)
     
     return v_s, advantages
