@@ -35,10 +35,12 @@ class TestIMPALA(unittest.TestCase):
 
     def train_impala(self, random_seed: int, controller_config: PPOControllerConfig, learner_config: Dict, env_config: Dict, device: str) -> None:
         self.init_random_seeds(random_seed)
+        print("Initializing IMPALA learner...")
         learner = IMPALALearner(controller_config=controller_config,
                             learner_config=learner_config,
                             env_config=env_config,
                             device=device)
+        print("Starting IMPALA training...")
         learner.async_run()
 
 
