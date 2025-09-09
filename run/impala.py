@@ -43,7 +43,7 @@ def init_random_seeds(random_seed: int, cuda_deterministic: bool = False) -> Non
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a PPO agent')
-    parser.add_argument('--config_path', type=str, default='src/configs/ppo_config.yaml', help='Path to the configuration file')
+    parser.add_argument('--config_path', type=str, default='src/configs/IMPALA_config.yaml', help='Path to the configuration file')
     parser.add_argument('--random_seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the training on (cpu or cuda)')
     parser.add_argument('--n_workers', type=int, default=5, help='Number of parallel workers for training')
