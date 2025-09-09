@@ -120,7 +120,7 @@ class IMPALALearner():
 
         # create and start workers
         # TODO: add device specification for the workers
-        mp.set_start_method('spawn')  # parallelisation of rollout gathering - spawn is safer for pytorch
+        mp.set_start_method('spawn', force=True)  # parallelisation of rollout gathering - spawn is safer for pytorch
         workers: List[IMPALAWorker] = []
         for worker_id in range(self.n_workers):
             worker = IMPALAWorker(worker_id=worker_id,
@@ -134,6 +134,7 @@ class IMPALALearner():
                                max_steps=(self.max_steps, self.max_steps_per_episode),
                                device='cpu')
             workers.append(worker)
+            print(f'Starting worker {worker_id}')
             worker.start()
 
         # gather rollouts and update when enough data is collected
@@ -142,6 +143,7 @@ class IMPALALearner():
             try: 
                 self._gather_rollouts()
             except queue.Empty:
+                print("No rollouts received from workers.")
                 continue
 
             # add the episode to the current rollout buffer
@@ -164,6 +166,7 @@ class IMPALALearner():
 
 
         self.done_event.set()
+        print("Training complete, waiting for workers to terminate...")
         self.barrier.wait()  # ensure all workers have finished
 
         # drain any final episode info
@@ -184,7 +187,6 @@ class IMPALALearner():
         """
         Optimise the model parameters using the collected rollouts.
         """
-        self._bootstrap_rollout(rollout)
         total_loss, loss_dict = self._loss(rollout, self.batch_size)
 
         self.optimiser.zero_grad()
@@ -203,16 +205,21 @@ class IMPALALearner():
         """
         Compute the actor and critic loss for the given rollout buffer considering v-trace correction. 
         """
+        rollout = rollout.get_transitions(gaes=False)
+
         # forward pass to get actions and log probabilities
         _, target_log_probs = self.controller.sample_action(rollout['states'])
         behaviour_log_probs = rollout['log_probs']
 
         # compute v-trace targets and advantages
-        v_s, pg_adv = vtrace(behaviour_log_probs, target_log_probs, rollout['actions'], rollout['rewards'], rollout['values'],
-                             rollout['dones'], gamma = self.controller_config['gamma'], rho_bar = self.rho_bar, c_bar = self.c_bar)
+        v_s, pg_adv = vtrace(behaviour_log_probs = behaviour_log_probs, target_log_probs = target_log_probs, 
+                             actions = rollout['actions'], rewards = rollout['rewards'], 
+                             state_values = rollout['state_values'], next_state_values = rollout['next_state_values'], 
+                             dones = rollout['dones'], gamma = self.gamma, 
+                             rho_bar = self.rho_bar, c_bar = self.c_bar)
         
         # calculate value loss
-        value_loss = 0.5 * torch.mean((v_s.detach() - rollout['values'])**2)
+        value_loss = 0.5 * torch.mean((v_s.detach() - rollout['state_values'])**2)
 
         # calculate policy gradient loss
         policy_loss = -torch.mean(pg_adv * target_log_probs)
@@ -226,27 +233,6 @@ class IMPALALearner():
         return total_loss, {"policy_loss": policy_loss, 
                             "value_loss": value_loss,
                             "entropy_loss": entropy}
-
-    
-    def _bootstrap_rollout(self, rollout: MultiAgentRolloutBuffer) -> MultiAgentRolloutBuffer:
-        """
-        Bootstrap the rollout buffer by calculating the value of the last state for each trajectory.
-        """
-        # TODO: check dimensions!
-        with torch.no_grad():
-            _, _, last_state_values, _ = self.controller.evaluate_state(
-                rollout['next_states'][-1], rollout['next_states'][-1]
-            )
-        last_state_values = last_state_values.squeeze(-1)
-
-        # bootstrap the rollout buffer per trajectory
-        dones = rollout['dones'][-1]
-        for i in range(len(dones)):
-            if dones[i]:
-                rollout['values'][-1][i] = torch.tensor(0.0, device=last_state_values.device)
-            else:
-                rollout['values'][-1][i] = last_state_values[i]
-        return rollout
     
     
     def _gather_rollouts(self) -> None:
