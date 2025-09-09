@@ -88,7 +88,7 @@ class MultiAgentRolloutBuffer:
         self.n_episodes += 1
 
 
-    def get_transitions(self, shuffle: bool = False) -> Dict[str, Tensor]:
+    def get_transitions(self, shuffle: bool = False, gaes: bool = True) -> Dict[str, Tensor]:
         """
         Flatten over all episodes agents and return a tensor for each transition value.
         """
@@ -100,7 +100,8 @@ class MultiAgentRolloutBuffer:
         state_values = []
         next_state_values = []
         dones = []
-        gaes = []
+        if gaes:
+            gaes = []
         for episode in self.episodes:
             for agent_handle in range(self.n_agents):
                 states.extend(episode['states'][agent_handle])
@@ -111,7 +112,8 @@ class MultiAgentRolloutBuffer:
                 log_probs.extend(episode['log_probs'][agent_handle])
                 rewards.extend(episode['rewards'][agent_handle])
                 dones.extend(episode['dones'][agent_handle])
-                gaes.extend(episode['gaes'][agent_handle])
+                if gaes:
+                    gaes.extend(episode['gaes'][agent_handle])
 
         if shuffle:
             indices = torch.randperm(len(states))
@@ -122,19 +124,23 @@ class MultiAgentRolloutBuffer:
             actions = [actions[i] for i in indices]
             log_probs = [log_probs[i] for i in indices]
             rewards = [rewards[i] for i in indices]
-            gaes = [gaes[i] for i in indices]
             dones = [dones[i] for i in indices]
+            if gaes:
+                gaes = [gaes[i] for i in indices]
 
-        return {'states': torch.stack(states).clone().detach(),
+        return_dict: Dict = {'states': torch.stack(states).clone().detach(),
                 'next_states': torch.stack(next_states).clone().detach(),
                 'state_values': torch.stack(state_values).clone().detach(),
                 'next_state_values': torch.stack(next_state_values).clone().detach(),
                 'actions': torch.stack(actions).clone().detach(),
                 'log_probs': torch.stack(log_probs).clone().detach(),
                 'rewards': torch.tensor(rewards).clone().detach(),
-                'dones': torch.tensor(dones, dtype=torch.float32).clone().detach(),
-                'gaes': torch.stack(gaes).clone().detach()
+                'dones': torch.tensor(dones, dtype=torch.float32).clone().detach()
                 }
+        if gaes:
+            return_dict['gaes'] = torch.stack(gaes).clone().detach()
+
+        return return_dict
     
     
     def get_minibatches(self, batch_size: int, shuffle: bool = False) -> List[Dict[str, Tensor]]:
