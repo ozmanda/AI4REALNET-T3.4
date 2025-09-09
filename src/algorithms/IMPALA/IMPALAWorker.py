@@ -90,11 +90,16 @@ class IMPALAWorker(mp.Process):
                                                            n_agents=n_agents,
                                                            max_depth=self.max_depth, 
                                                            n_nodes=self.controller.config['n_nodes'])
+
+            # TODO: add state and next_state values to transition 
+            state_values, next_state_values = self.controller.state_values(current_state_tensor, next_state_tensor)
             self.rollout.add_transitions(states=current_state_tensor.detach(), 
+                                         state_values=state_values.detach(),
                                          actions=actions_dict, 
                                          log_probs=log_probs.detach(), 
                                          rewards=rewards, 
                                          next_states=next_state_tensor.detach(), 
+                                         next_state_values=next_state_values.detach(),
                                          dones=dones)
 
             current_state_tensor = next_state_tensor
@@ -117,20 +122,15 @@ class IMPALAWorker(mp.Process):
                                         'episode/reward': self.rollout.episodes[-1]['average_episode_reward'],
                                         'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})
 
-                self._vtrace_correction()
                 self._try_refresh_weights()
 
-
-    def _vtrace_correction(self) -> None:
-        """
-        Apply v-trace correction to the rollout buffer.
-        """
-        # TODO: implement v-trace correction
-        pass
+        self.barrier.wait()
+        print(f'Worker {self.worker_id} done after {self.total_episodes} episodes')
 
         
     def _try_refresh_weights(self):
         if self.policy_update_step < self.shared_weights['update_step']:
             self.policy_update_step = self.shared_weights['update_step']
-            self.controller.load_state_dict(self.shared_weights['controller_state'])
+            self.controller.actor_network.load_state_dict(self.shared_weights['controller_state'][0])
+            self.controller.critic_network.load_state_dict(self.shared_weights['controller_state'][1])
             print(f'Worker {self.worker_id} updated')
