@@ -91,7 +91,7 @@ class PPOController(nn.Module):
         actor_params = self.actor_network.state_dict()
         critic_params = self.critic_network.state_dict()
         return actor_params, critic_params
-        
+    
 
     def state_values(self, states: Tensor, next_states: Tensor) -> Tensor:
         """
@@ -118,8 +118,8 @@ class PPOController(nn.Module):
             - state: Tensor of shape (batch_size, state_size)
         
         Returns:
-            - action: Tensor of shape (batch_size, action_size)
-            - log_prob: Tensor of shape (batch_size, action_size)
+            - action: Tensor of shape (batch_size, 1)
+            - log_prob: Tensor of shape (batch_size, 1)
         """
         logits = self._make_logits(state)
         action_distribution = torch.distributions.Categorical(logits=logits)
@@ -136,8 +136,8 @@ class PPOController(nn.Module):
             - state: Tensor of shape (batch_size, state_size)
         
         Returns:
-            - action: Tensor of shape (batch_size, action_size)
-            - log_prob: Tensor of shape (batch_size, action_size)
+            - action: Tensor of shape (batch_size, 1)
+            - log_prob: Tensor of shape (batch_size, 1)
         """
         with torch.no_grad():
             logits = self._make_logits(state)
