@@ -10,7 +10,7 @@ from src.utils.file_utils import load_config_file
 from src.utils.obs_utils import calculate_state_size
 from src.configs.ControllerConfigs import PPOControllerConfig
 
-from src.algorithms.PPO.PPOController import PPOController
+from src.controllers.PPOController import PPOController
 from src.algorithms.PPO.PPOLearner import Learner
 from flatland.envs.rail_env import RailEnv
 
