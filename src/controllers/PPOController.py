@@ -162,4 +162,21 @@ class PPOController(nn.Module):
         return discounted_rewards
     
 
-
+    def get_state_dict(self) -> Dict:
+        """
+        Get the state dictionary of the PPO controller.
+        """
+        state_dict = {
+            'actor_network': self.actor_network.state_dict(),
+            'critic_network': self.critic_network.state_dict()
+        }
+        return state_dict
+    
+    def update_weights(self, state_dict: Dict) -> None:
+        """
+        Update the weights of the PPO controller with the given state dictionary.
+        """
+        if 'actor_network' in state_dict:
+            self.actor_network.load_state_dict(state_dict['actor_network'])
+        if 'critic_network' in state_dict:
+            self.critic_network.load_state_dict(state_dict['critic_network'])

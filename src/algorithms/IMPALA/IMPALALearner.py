@@ -18,6 +18,7 @@ from multiprocessing.managers import DictProxy
 from src.algorithms.IMPALA.IMPALAWorker import IMPALAWorker
 from src.configs.ControllerConfigs import PPOControllerConfig
 from src.controllers.PPOController import PPOController
+from src.controllers.LSTMController import LSTMController
 from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
 from src.algorithms.loss import vtrace
 
@@ -248,8 +249,7 @@ class IMPALALearner():
 
     def _broadcast_controller_state(self) -> None:
         """ Push the current controller state to the shared dictionary for workers to access. """
-        controller_state = (self.controller.actor_network.state_dict(),
-                            self.controller.critic_network.state_dict())
+        controller_state: Dict = self.controller.get_state_dict()
         self.shared_weights['controller_state'] = controller_state
         self.shared_weights['update_step'] = self.update_step
 

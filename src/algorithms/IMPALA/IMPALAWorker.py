@@ -131,6 +131,5 @@ class IMPALAWorker(mp.Process):
     def _try_refresh_weights(self):
         if self.policy_update_step < self.shared_weights['update_step']:
             self.policy_update_step = self.shared_weights['update_step']
-            self.controller.actor_network.load_state_dict(self.shared_weights['controller_state'][0])
-            self.controller.critic_network.load_state_dict(self.shared_weights['controller_state'][1])
+            self.controller.update_weights(self.shared_weights['controller_state'])
             print(f'Worker {self.worker_id} updated')
