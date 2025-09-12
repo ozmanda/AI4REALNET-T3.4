@@ -10,7 +10,7 @@ learner_config:
     run_name: "parallel_test"
     max_steps: 10000
     max_steps_per_episode: 200
-    target_updates: 10
+    target_updates: 100
     samples_per_update: 256
     training_iterations: 4
     batch_size: 32
@@ -39,12 +39,11 @@ controller_config:
     entropy_coefficient: 0.01
     tau: 0.99
     n_features: 12
+    lstm: true
     actor_config:
       type: "FNN"
       n_heads: 5
       hidden_size: 128
-      intent_size: 32
-      neighbour_depth: 3
       layer_sizes: 
       - 256
       - 128
