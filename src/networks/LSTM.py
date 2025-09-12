@@ -21,7 +21,6 @@ class LSTM(nn.Module):
     def _init_config(self, config: Dict) -> None:
         self.n_features: int = config['n_features']
         self.n_agents: int = config['n_agents']
-        self.hid_size: int = config['hidden_size']
         self.n_actions = config['n_actions']
         self.hidsize = config['hidden_size']
         self.lstm_hidsize = config['lstm_hidden_size']
@@ -66,11 +65,7 @@ class LSTM(nn.Module):
             - next_hidden_state     Tensor (n_agents, hid_size)
             - next_cell_state       Tensor (n_agents, hid_size)
         """
-        encoded_x = self.feature_extraction(states)     # (n_agents, hid_size)
-        encoded_x = encoded_x.unsqueeze(1)              # (n_agents, 1, hid_size) - adding sequence length dimension
-        hx, hidden_states = self.lstm_unit(encoded_x, (self.prev_hidden_state, self.prev_cell_state))
-        hx = hx[:, -1, :]  # (n_agents, hid_size) - removing sequence length dimension
-
+        hx, hidden_states = self._feature_extraction(states)   # (n_agents, hid_size) # TODO: manage previous hidden states! 
         logits = self.actor_head(hx)
         action_distribution = torch.distributions.Categorical(logits=logits)
         if select_best_action:
@@ -81,9 +76,21 @@ class LSTM(nn.Module):
             action_log_probs = action_distribution.log_prob(actions)
         
         values = self.critic_head(hx)
-
         return actions, action_log_probs, values, hidden_states
     
+
+    def state_values(self, states: Tensor) -> Tensor:
+        """ Get the state values from the critic network for the current states. """
+        return self.critic_head(self._feature_extraction(states)[0])
+
+    def _feature_extraction(self, states: Tensor) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
+        encoded_x: Tensor = self.feature_extraction(states)     # (n_agents, hid_size)
+        encoded_x = encoded_x.unsqueeze(1)              # (n_agents, 1, hid_size) - adding sequence length dimension
+        hx, hidden_states = self.lstm_unit(encoded_x, (self.prev_hidden_state, self.prev_cell_state))
+        hx = hx[:, -1, :]  # (n_agents, hid_size) - removing sequence length dimension
+        self.prev_hidden_state, self.prev_cell_state = hidden_states
+        return hx, hidden_states
+
 
     def _init_hidden(self) -> None:
         """
@@ -96,8 +103,8 @@ class LSTM(nn.Module):
             - hidden_state      Tensor (batch_size * n_agents, hid_size)
             - cell_state        Tensor (batch_size * n_agents, hid_size)
         """
-        self.hidden_state = torch.zeros(self.n_agents, self.hid_size, requires_grad=True)
-        self.cell_state = torch.zeros(self.n_agents, self.hid_size, requires_grad=True)
+        self.hidden_state = torch.zeros(self.n_agents, self.hidsize, requires_grad=True)
+        self.cell_state = torch.zeros(self.n_agents, self.hidsize, requires_grad=True)
 
 
     def get_state_dict(self) -> Dict:
