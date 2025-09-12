@@ -11,17 +11,16 @@ class LSTM(nn.Module):
     LSTM network for multi-agent reinforcement learning, adapted from (Hochreiter & Schmidhauber 1997) and made for use with
     Flatland multi-agent simulation environment.
     """
-    def __init__(self, config: Dict, n_agents: int) -> None:
+    def __init__(self, config: Dict) -> None:
         super(LSTM, self).__init__()
-        self.n_agents = n_agents
         self._init_config(config)
         self._init_network()
-        self.reset_network(n_agents)
+        self.reset_network()
 
     def _init_config(self, config: Dict) -> None:
         self.n_features: int = config['n_features']
         self.n_agents: int = config['n_agents']
-        self.n_actions = config['n_actions']
+        self.n_actions = config['action_size']
         self.hidsize = config['hidden_size']
         self.lstm_hidsize = config['lstm_hidden_size']
     
@@ -105,6 +104,7 @@ class LSTM(nn.Module):
         """
         self.hidden_state = torch.zeros(self.n_agents, self.hidsize, requires_grad=True)
         self.cell_state = torch.zeros(self.n_agents, self.hidsize, requires_grad=True)
+        return self.hidden_state, self.cell_state
 
 
     def get_state_dict(self) -> Dict:
