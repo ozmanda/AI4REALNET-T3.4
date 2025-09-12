@@ -13,6 +13,10 @@ from src.networks.FeedForwardNN import FeedForwardNN
 
 
 class PPOController(nn.Module):
+    """
+    Basic Controller for Proximal Policy Optimization (PPO) algorithm.
+    Implements simple Feed Forward NNs for the actor and critic networks. 
+    """
     def __init__(self, config: Dict, agent_ID: Union[int, str] = None):
         super(PPOController, self).__init__()
         self.config: Dict = config
@@ -39,10 +43,12 @@ class PPOController(nn.Module):
         # self.max_grad_norm: float = config['max grad norm']
 
     def _build_actor(self) -> nn.Module:
+        # TODO: make this modular
         self.actor_network = FeedForwardNN(self.state_size, self.config['actor_config']['hidden_size'], self.action_size)
 
     def _build_critic(self) -> nn.Module:
-        self.critic_network = FeedForwardNN(self.state_size, self.config['critic_config']['hidden_size'], 1) # TODO: add hidden size to critic config
+        # TODO: make this modular
+        self.critic_network = FeedForwardNN(self.state_size, self.config['critic_config']['hidden_size'], 1) 
 
     def _make_logits(self, states: Tensor) -> Tensor:
         """
