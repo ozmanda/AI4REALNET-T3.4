@@ -17,7 +17,7 @@ from multiprocessing.managers import DictProxy
 
 from src.algorithms.PPO.PPOWorker import PPOWorker
 from src.configs.ControllerConfigs import PPOControllerConfig
-from src.algorithms.PPO.PPOController import PPOController
+from src.controllers.PPOController import PPOController
 from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
 from src.algorithms.loss import value_loss, value_loss_with_IS, policy_loss
 
