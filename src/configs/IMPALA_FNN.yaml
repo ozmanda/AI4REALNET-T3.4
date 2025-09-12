@@ -27,8 +27,8 @@ learner_config:
 
 # Controller Config
 controller_config: 
+    type: "FNN"
     action_size: 5
-    neighbour_depth: 2
     batch_size: 32
     gae_horizon: 16
     n_epochs_update: 3
@@ -39,20 +39,12 @@ controller_config:
     entropy_coefficient: 0.01
     tau: 0.99
     n_features: 12
-    lstm: true
     actor_config:
       type: "FNN"
-      n_heads: 5
       hidden_size: 128
-      layer_sizes: 
-      - 256
-      - 128
     critic_config:
       type: "FNN"
       hidden_size: 128
-      layer_sizes: 
-      - 256
-      - 128
 
 
 # Environment Config
