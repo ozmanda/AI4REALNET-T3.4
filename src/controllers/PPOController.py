@@ -40,14 +40,11 @@ class PPOController(nn.Module):
         self.clip_epsilon: float = config['clip_epsilon']
         self.value_loss_coef: float = config['value_loss_coefficient']
         self.entropy_coef: float = config['entropy_coefficient']
-        # self.max_grad_norm: float = config['max grad norm']
 
     def _build_actor(self) -> nn.Module:
-        # TODO: make this modular
         self.actor_network = FeedForwardNN(self.state_size, self.config['actor_config']['hidden_size'], self.action_size)
 
     def _build_critic(self) -> nn.Module:
-        # TODO: make this modular
         self.critic_network = FeedForwardNN(self.state_size, self.config['critic_config']['hidden_size'], 1) 
 
     def _make_logits(self, states: Tensor) -> Tensor:
@@ -99,7 +96,7 @@ class PPOController(nn.Module):
         return actor_params, critic_params
     
 
-    def state_values(self, states: Tensor, next_states: Tensor) -> Tensor:
+    def state_values(self, states: Tensor) -> Tensor:
         """
         Get the state values from the critic network for the current and next states.
         
@@ -112,9 +109,8 @@ class PPOController(nn.Module):
             - next_state_values: Tensor of shape (batch_size, 1)
         """
         state_values = self.critic_network(states)
-        next_state_values = self.critic_network(next_states)
-        return state_values, next_state_values
-        
+        return state_values
+
 
     def sample_action(self, state: torch.Tensor) -> torch.Tensor:
         """
@@ -126,12 +122,14 @@ class PPOController(nn.Module):
         Returns:
             - action: Tensor of shape (batch_size, 1)
             - log_prob: Tensor of shape (batch_size, 1)
+            - value: Tensor of shape (batch_size, 1)
         """
         logits = self._make_logits(state)
         action_distribution = torch.distributions.Categorical(logits=logits)
         actions = action_distribution.sample()
         log_prob = action_distribution.log_prob(actions)
-        return actions, log_prob
+        values = self.critic_network(state)
+        return actions, log_prob, values
     
 
     def select_action(self, state: torch.Tensor) -> torch.Tensor:
@@ -152,16 +150,6 @@ class PPOController(nn.Module):
         return actions, log_probs
     
 
-    def _discounted_rewards(self, rewards: Tensor, dones: Tensor, step: int) -> Tensor:
-        """ Compute discounted rewards. """
-        discounted_rewards = torch.zeros_like(rewards)
-        cumulative_reward = 0.0
-        for i in reversed(range(len(rewards))):
-            cumulative_reward = rewards[i] + (self.gamma * cumulative_reward * (1 - dones[i]))
-            discounted_rewards[i] = cumulative_reward
-        return discounted_rewards
-    
-
     def get_state_dict(self) -> Dict:
         """
         Get the state dictionary of the PPO controller.
@@ -171,6 +159,7 @@ class PPOController(nn.Module):
             'critic_network': self.critic_network.state_dict()
         }
         return state_dict
+    
     
     def update_weights(self, state_dict: Dict) -> None:
         """

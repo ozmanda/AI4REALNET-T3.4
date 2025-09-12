@@ -77,7 +77,7 @@ class IMPALAWorker(mp.Process):
                                                           n_nodes=self.controller.config['n_nodes'])
 
         while not self.done_event.is_set():
-            actions, log_probs = self.controller.sample_action(current_state_tensor)
+            actions, log_probs, state_values = self.controller.sample_action(current_state_tensor)
             actions_dict: Dict[Union[int, str], Tensor] = {}
             
             # TODO: consider agents which have already terminated
@@ -91,8 +91,7 @@ class IMPALAWorker(mp.Process):
                                                            max_depth=self.max_depth, 
                                                            n_nodes=self.controller.config['n_nodes'])
 
-            # TODO: add state and next_state values to transition 
-            state_values, next_state_values = self.controller.state_values(current_state_tensor, next_state_tensor)
+            next_state_values = self.controller.state_values(next_state_tensor)
             self.rollout.add_transitions(states=current_state_tensor.detach(), 
                                          state_values=state_values.detach(),
                                          actions=actions_dict, 
