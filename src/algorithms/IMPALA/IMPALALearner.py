@@ -28,6 +28,7 @@ from src.configs.EnvConfig import FlatlandEnvConfig
 class IMPALALearner(): 
     """
     Learner class for the IMPALA Algorithm.
+    # TODO: generalise from PPOControllerConfig to base class
     """
     def __init__(self, controller_config: PPOControllerConfig, learner_config: Dict, env_config: FlatlandEnvConfig, device: str = None) -> None:
         # Initialise environment and set controller / learning parameters
@@ -45,8 +46,6 @@ class IMPALALearner():
 
         # Initialise wandb for logging
         self._init_wandb(learner_config)
-        wandb.watch(self.controller.actor_network, log='all')
-        wandb.watch(self.controller.critic_network, log='all')
 
 
     def _init_controller(self, config: PPOControllerConfig) -> None:
@@ -84,8 +83,7 @@ class IMPALALearner():
         wandb.run.define_metric('train/*', step_metric='update_step')
         wandb.run.name = f"{learner_config['run_name']}_IMPALA"
         wandb.run.save()
-        wandb.watch(self.controller.actor_network, log='all')
-        wandb.watch(self.controller.critic_network, log='all')
+        self.controller.init_wandb()
 
 
     def _init_queues(self) -> None:
@@ -100,6 +98,7 @@ class IMPALALearner():
 
 
     def _build_optimizer(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
+        # TODO: how to generalise to other controllers?
         if optimiser_config['type'] == 'adam': 
             self.optimiser = optim.Adam(params=chain(self.controller.actor_network.parameters(), self.controller.critic_network.parameters()), lr=float(optimiser_config['learning_rate']))
         else: 
@@ -174,7 +173,6 @@ class IMPALALearner():
         self._log_episode_info()
 
         # terminate all workers
-        #! TODO: there is something wrong here, the workers never finish!
         for w in workers:
             w.join()
         for w in workers:
@@ -209,7 +207,7 @@ class IMPALALearner():
         rollout = rollout.get_transitions(gaes=False)
 
         # forward pass to get actions and log probabilities
-        _, target_log_probs = self.controller.sample_action(rollout['states'])
+        _, target_log_probs, _ = self.controller.sample_action(rollout['states'])
         behaviour_log_probs = rollout['log_probs']
 
         # compute v-trace targets and advantages

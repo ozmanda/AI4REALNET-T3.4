@@ -47,6 +47,10 @@ class PPOController(nn.Module):
     def _build_critic(self) -> nn.Module:
         self.critic_network = FeedForwardNN(self.state_size, self.config['critic_config']['hidden_size'], 1) 
 
+    def init_wandb(self) -> None:
+        wandb.watch(self.actor_network, log='all')
+        wandb.watch(self.critic_network, log='all')
+
     def _make_logits(self, states: Tensor) -> Tensor:
         """
         Create logits for the action space based on the current state.
