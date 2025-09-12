@@ -1,13 +1,23 @@
-from src.algorithms.PPO.PPOController import PPOController
+from src.controllers.PPOController import PPOController
+from src.controllers.LSTMController import LSTMController
 from typing import Dict, List, Union
 from src.utils.obs_utils import calculate_state_size
 
-class PPOControllerConfig(): 
-    def __init__(self, config_dict: Dict[str, Union[Dict, str, float, int]]) -> None:
+class ControllerConfig():
+    def __init__(self, config_dict: Dict) -> None:
         self.config_dict = config_dict
-        self.config_dict['actor_config']['layer_sizes'] = [int(x) for x in config_dict['actor_config']['layer_sizes']]
-        self.config_dict['critic_config']['layer_sizes'] = [int(x) for x in config_dict['critic_config']['layer_sizes']]
+        self.type = config_dict.get('type', 'FNN')
 
+class PPOControllerConfig(ControllerConfig): 
+    def __init__(self, config_dict: Dict[str, Union[Dict, str, float, int]]) -> None:
+        super().__init__(config_dict)
 
     def create_controller(self) -> PPOController:
         return PPOController(self.config_dict) 
+
+class LSTMControllerConfig(ControllerConfig): 
+    def __init__(self, config_dict: Dict) -> None:
+        super().__init__(config_dict)
+
+    def create_controller(self) -> LSTMController:
+        return LSTMController(self.config_dict)
