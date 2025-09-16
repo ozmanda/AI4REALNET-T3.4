@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 import torch.functional as F
 from torch import Tensor
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Iterable
+from itertools import chain
 
 class LSTM(nn.Module):
     """
@@ -19,6 +20,7 @@ class LSTM(nn.Module):
 
     def _init_config(self, config: Dict) -> None:
         self.n_features: int = config['n_features']
+        self.state_size: int = config['state_size']
         self.n_agents: int = config['n_agents']
         self.n_actions = config['action_size']
         self.hidsize = config['hidden_size']
@@ -29,7 +31,7 @@ class LSTM(nn.Module):
         Initialise an LSTM-based Deep RL actor network
         """
         self.feature_extraction = nn.Sequential(
-            nn.Linear(self.n_features, self.hidsize),
+            nn.Linear(self.state_size, self.hidsize),
             nn.ReLU(),
             nn.Linear(self.hidsize, self.hidsize),
             nn.ReLU()
@@ -39,6 +41,16 @@ class LSTM(nn.Module):
         self.critic_head = nn.Linear(self.lstm_hidsize, 1)
 
         self.prev_hidden_state, self.prev_cell_state = self._init_hidden()
+
+    
+    def get_parameters(self):
+        params: Iterable = chain(
+            self.feature_extraction.parameters(),
+            self.lstm_unit.parameters(),
+            self.actor_head.parameters(),
+            self.critic_head.parameters()
+        )
+        return params
 
 
     def reset_network(self, n_agents: int = None) -> None:
@@ -77,16 +89,22 @@ class LSTM(nn.Module):
         values = self.critic_head(hx)
         return actions, action_log_probs, values, hidden_states
     
+    # TODO: add extras variable to forward output (contains previous and current hidden states)
+    
 
     def state_values(self, states: Tensor) -> Tensor:
         """ Get the state values from the critic network for the current states. """
-        return self.critic_head(self._feature_extraction(states)[0])
+        hx, _ = self._feature_extraction(states)
+        return self.critic_head(hx)
+
 
     def _feature_extraction(self, states: Tensor) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
         encoded_x: Tensor = self.feature_extraction(states)     # (n_agents, hid_size)
-        encoded_x = encoded_x.unsqueeze(1)              # (n_agents, 1, hid_size) - adding sequence length dimension
+        encoded_x = encoded_x.unsqueeze(0)              # (1, n_agents, hid_size) - adding sequence length dimension
+
+        # LSTM expects (seq_len, batch, input_size)
         hx, hidden_states = self.lstm_unit(encoded_x, (self.prev_hidden_state, self.prev_cell_state))
-        hx = hx[:, -1, :]  # (n_agents, hid_size) - removing sequence length dimension
+        hx = hx.squeeze(0)  # (n_agents, hid_size) - removing sequence length dimension
         self.prev_hidden_state, self.prev_cell_state = hidden_states
         return hx, hidden_states
 
@@ -102,8 +120,8 @@ class LSTM(nn.Module):
             - hidden_state      Tensor (batch_size * n_agents, hid_size)
             - cell_state        Tensor (batch_size * n_agents, hid_size)
         """
-        self.hidden_state = torch.zeros(self.n_agents, self.hidsize, requires_grad=True)
-        self.cell_state = torch.zeros(self.n_agents, self.hidsize, requires_grad=True)
+        self.hidden_state = torch.zeros(1, self.n_agents, self.lstm_hidsize, requires_grad=True)
+        self.cell_state = torch.zeros(1, self.n_agents, self.lstm_hidsize, requires_grad=True)
         return self.hidden_state, self.cell_state
 
 
