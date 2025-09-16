@@ -1,5 +1,5 @@
 from torch import Tensor
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Iterable
 
 class Controller(): 
     """ Base class for multi-agent RL Controllers. For use with a single agent, the input sizes should be adjusted accordingly."""
@@ -58,5 +58,14 @@ class Controller():
 
         Parameters:
             - path: str, the path to the controller file
+        """
+        pass
+
+    def get_parameters(self) -> Iterable:
+        """
+        Get the parameters of the controller that can be optimised.
+
+        Returns:
+            - parameters: Dict, the parameters of the controller
         """
         pass

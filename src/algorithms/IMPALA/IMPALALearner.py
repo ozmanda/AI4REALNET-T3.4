@@ -55,7 +55,7 @@ class IMPALALearner():
         self.entropy_coeff: float = config.config_dict['entropy_coefficient']
         self.value_loss_coeff: float = config.config_dict['value_loss_coefficient']
         self.gamma: float = config.config_dict['gamma']
-        self.controller: PPOController = config.create_controller()
+        self.controller: Union[PPOController, LSTMController] = config.create_controller()
 
 
     def _init_learning_params(self, learner_config: Dict) -> None:
@@ -100,7 +100,7 @@ class IMPALALearner():
     def _build_optimizer(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
         # TODO: how to generalise to other controllers?
         if optimiser_config['type'] == 'adam': 
-            self.optimiser = optim.Adam(params=chain(self.controller.actor_network.parameters(), self.controller.critic_network.parameters()), lr=float(optimiser_config['learning_rate']))
+            self.optimiser = optim.Adam(params=self.controller.get_parameters(), lr=float(optimiser_config['learning_rate']))
         else: 
             raise Warning('Only Adam optimiser has been implemented')
 
@@ -207,6 +207,7 @@ class IMPALALearner():
         rollout = rollout.get_transitions(gaes=False)
 
         # forward pass to get actions and log probabilities
+        # TODO: figure out how to pass hidden states for LSTM
         _, target_log_probs, _ = self.controller.sample_action(rollout['states'])
         behaviour_log_probs = rollout['log_probs']
 
