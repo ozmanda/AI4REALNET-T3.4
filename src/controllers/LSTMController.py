@@ -1,10 +1,12 @@
 import wandb
+import numpy as np
+from itertools import chain
+from typing import Dict, Union, List, Tuple
+
 import torch
 import torch.nn as nn
 from torch import Tensor
 import torch.nn.functional as F
-import numpy as np
-from typing import Dict, Union, List, Tuple
 
 from flatland.envs.rail_env import RailEnv
 
@@ -23,6 +25,7 @@ class LSTMController(nn.Module):
         self._init_hyperparameters(config)
 
         self._build_lstm_network()
+        self.lstm_network.reset_network(n_agents=self.config['n_agents'])
         self.update_step: int = 0
 
     def _init_hyperparameters(self, config: Dict) -> None:
@@ -57,6 +60,9 @@ class LSTMController(nn.Module):
         self.lstm_network.update_weights(network_params)
         print("LSTMController: Weights updated.")
 
+    def get_parameters(self):
+        return self.lstm_network.get_parameters()
+
     def get_state_dict(self) -> Dict:
         return self.lstm_network.get_state_dict()
     
@@ -64,7 +70,7 @@ class LSTMController(nn.Module):
         self.lstm_network.update_weights(network_params)
     
 
-    def state_values(self, states: Tensor, next_states: Tensor) -> Tensor:
+    def state_values(self, states: Tensor) -> Tensor:
         """
         Get the state values from the critic network for the current and next states.
         
@@ -77,23 +83,22 @@ class LSTMController(nn.Module):
             - next_state_values: Tensor of shape (batch_size, 1)
         """
         state_values = self.lstm_network.state_values(states)
-        next_state_values = self.lstm_network.state_values(next_states)
-        return state_values, next_state_values
+        return state_values
         
 
     def sample_action(self, state: torch.Tensor) -> torch.Tensor:
         """
-        Get the action from the actor network based on the current state.
+        Get the actions from the actor network based on the current state.
         
         Parameters:
-            - state: Tensor of shape (batch_size, state_size)
+            - state: Tensor of shape (n_agents, state_size)
         
         Returns:
-            - action: Tensor of shape (batch_size, 1)
-            - log_prob: Tensor of shape (batch_size, 1)
+            - actions: Tensor of shape (n_agents, 1)
+            - log_probs: Tensor of shape (n_agents, 1)
         """
-        actions, log_probs, values, hidden_states = self.lstm_network(state)
-        return actions, log_probs
+        actions, log_probs, values, _ = self.lstm_network(state)
+        return actions, log_probs, values
 
 
     def select_action(self, state: torch.Tensor) -> torch.Tensor:
