@@ -22,3 +22,8 @@ self.current_episode: Dict[str, List] = {
 ```
 
 Upon episode completeion, the ``end_episode()`` function calculates the agent and average episode length and rewards, then adds it to the list of all completed episodes ``episodes: List[Dict]``. 
+
+### Extras
+The extras item in the list is used to hold controller-specific information, for example the previous hidden and cell states of LSTM networks. The ``extras`` are structured as a dictionary, exemplified using the LSTM example: 
+
+``extras: Dict[str, List]`` $\rightarrow$ ``extras = {'prev_hidden_states': List[Tensor], 'prev_cell_states': List[Tensor]}`` where the outer list has length ``n_agents`` and the inner list has the length ``episode_length``. 
