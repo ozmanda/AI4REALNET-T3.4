@@ -24,7 +24,7 @@ class TestIMPALA(unittest.TestCase):
 
         # prepare learner config
         self.learner_config = config['learner_config']
-        self.learner_config['n_workers'] = 4
+        self.learner_config['n_workers'] = 2
         self.learner_config['target_updates'] = 2
 
         # prepare controller

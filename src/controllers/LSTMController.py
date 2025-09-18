@@ -1,7 +1,7 @@
 import wandb
 import numpy as np
 from itertools import chain
-from typing import Dict, Union, List, Tuple
+from typing import Dict, Union, List, Tuple, Type
 
 import torch
 import torch.nn as nn
@@ -86,9 +86,10 @@ class LSTMController(nn.Module):
         return state_values
         
 
-    def sample_action(self, state: torch.Tensor) -> torch.Tensor:
+    def sample_action(self, states: Tensor, extras: Dict = {}) -> Tuple[Tensor, Tensor, Tensor, Dict[str, Tensor]]:
         """
-        Get the actions from the actor network based on the current state.
+        Get the actions from the actor network based on the current state. Used for sampling actions during training 
+        and evaluating the target policy during the update step.
         
         Parameters:
             - state: Tensor of shape (n_agents, state_size)
@@ -97,9 +98,16 @@ class LSTMController(nn.Module):
             - actions: Tensor of shape (n_agents, 1)
             - log_probs: Tensor of shape (n_agents, 1)
         """
-        actions, log_probs, values, _ = self.lstm_network(state)
-        return actions, log_probs, values
-
+        if not extras:
+            # sampling during training - hidden states maintained by the LSTM network
+            actions, log_probs, values, hidden_states = self.lstm_network.forward(states)
+            return actions, log_probs, values, hidden_states
+        
+        else:
+            # evaluating during the update step - hidden states provided by the rollout buffer
+            _, log_probs, _, _ = self.lstm_network(states, (extras['prev_hidden_state'].unsqueeze(0), extras['prev_cell_state'].unsqueeze(0)), select_best_action=False)
+            return None, log_probs, None, None 
+        
 
     def select_action(self, state: torch.Tensor) -> torch.Tensor:
         """
@@ -112,7 +120,7 @@ class LSTMController(nn.Module):
             - action: Tensor of shape (batch_size, 1)
             - log_prob: Tensor of shape (batch_size, 1)
         """
-        actions, log_probs, values, hidden_states = self.lstm_network(state, select_best_action=True)
+        actions, log_probs, _, _ = self.lstm_network(state, select_best_action=True)
         return actions, log_probs
     
     

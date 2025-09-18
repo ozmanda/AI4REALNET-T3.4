@@ -77,12 +77,7 @@ class IMPALAWorker(mp.Process):
                                                           n_nodes=self.controller.config['n_nodes'])
 
         while not self.done_event.is_set():
-            # for agent in range(self.env.number_of_agents): 
-                
-
-
-            actions, log_probs, state_values = self.controller.sample_action(current_state_tensor) # (n_agents, state_size)
-            # TODO: add extras variable to action sampling (for LSTM contains hidden state)
+            actions, log_probs, state_values, extras = self.controller.sample_action(current_state_tensor) # (n_agents, state_size)
             actions_dict: Dict[Union[int, str], Tensor] = {}
             
             # TODO: consider agents which have already terminated
@@ -104,7 +99,8 @@ class IMPALAWorker(mp.Process):
                                          rewards=rewards, 
                                          next_states=next_state_tensor.detach(), 
                                          next_state_values=next_state_values.detach(),
-                                         dones=dones)
+                                         dones=dones,
+                                         extras=extras) # extras = hidden states for LSTM
 
             current_state_tensor = next_state_tensor
             episode_step += 1

@@ -5,6 +5,7 @@ from torch import Tensor
 import torch.nn.functional as F
 import numpy as np
 from typing import Dict, Union, List, Tuple
+from itertools import chain
 
 from flatland.envs.rail_env import RailEnv
 
@@ -63,6 +64,8 @@ class PPOController(nn.Module):
         """
         return self.actor_network(states)
     
+    def get_parameters(self):
+        return chain(self.actor_network.parameters(), self.critic_network.parameters())
 
     def update_weights(self, network_params: Tuple[Dict, Dict]) -> None:
         """
@@ -116,7 +119,7 @@ class PPOController(nn.Module):
         return state_values
 
 
-    def sample_action(self, state: torch.Tensor) -> torch.Tensor:
+    def sample_action(self, states: torch.Tensor, extras: Dict = None) -> torch.Tensor:
         """
         Get the action from the actor network based on the current state.
         
@@ -128,12 +131,12 @@ class PPOController(nn.Module):
             - log_prob: Tensor of shape (batch_size, 1)
             - value: Tensor of shape (batch_size, 1)
         """
-        logits = self._make_logits(state)
+        logits = self._make_logits(states)
         action_distribution = torch.distributions.Categorical(logits=logits)
         actions = action_distribution.sample()
         log_prob = action_distribution.log_prob(actions)
-        values = self.critic_network(state)
-        return actions, log_prob, values
+        values = self.critic_network(states)
+        return actions, log_prob, values, None # extras = None (compatibility with other controllers)
     
 
     def select_action(self, state: torch.Tensor) -> torch.Tensor:
@@ -147,6 +150,7 @@ class PPOController(nn.Module):
             - action: Tensor of shape (batch_size, 1)
             - log_prob: Tensor of shape (batch_size, 1)
         """
+        # TODO: change this to match sample_action function
         with torch.no_grad():
             logits = self._make_logits(state)
             actions = torch.argmax(logits, dim=-1)

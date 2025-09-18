@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from torch import Tensor
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Any
 from src.algorithms.PPO_JBR_HSE.PPORollout import Transition
 
 
@@ -30,6 +30,7 @@ class MultiAgentRolloutBuffer:
 
 
     def _reset_current_episode(self) -> None:
+        # TODO: add extras (Dict) for different controllers (e.g. hidden states for LSTM)
         self.current_episode: Dict[str, List] = {
             'states': [[] for _ in range(self.n_agents)],
             'state_values': [[] for _ in range(self.n_agents)],
@@ -39,6 +40,7 @@ class MultiAgentRolloutBuffer:
             'next_states': [[] for _ in range(self.n_agents)],
             'next_state_values': [[] for _ in range(self.n_agents)],
             'dones': [[] for _ in range(self.n_agents)],
+            'extras': {},
             'gaes': [[] for _ in range(self.n_agents)],
             'episode_length': [0 for _ in range(self.n_agents)],
             'episode_reward': [0.0 for _ in range(self.n_agents)],
@@ -49,7 +51,7 @@ class MultiAgentRolloutBuffer:
 
     def add_transitions(self, states: Tensor, actions: Dict[Union[int, str], int], log_probs: Tensor, 
                         rewards: Dict[Union[int, str], float], next_states: Tensor, dones: Dict[Union[int, str], bool],
-                        state_values: Tensor, next_state_values: Tensor) -> None:
+                        state_values: Tensor, next_state_values: Tensor, extras: Dict[str, Tensor]) -> None:
         """
         Adds a transition to the buffer.
 
@@ -64,15 +66,25 @@ class MultiAgentRolloutBuffer:
             - next_state_values: Tensor (n_agents, 1)
         """
         for agent_handle in range(self.n_agents):
+            # add standard transition values
             self.current_episode['states'][agent_handle].append(states[agent_handle])
             self.current_episode['actions'][agent_handle].append(actions[agent_handle])
             self.current_episode['log_probs'][agent_handle].append(log_probs[agent_handle])
             self.current_episode['rewards'][agent_handle].append(rewards[agent_handle])
             self.current_episode['next_states'][agent_handle].append(next_states[agent_handle])
             self.current_episode['dones'][agent_handle].append(dones[agent_handle])
+
+            # add state values only if they are provided
             if state_values is not None and next_state_values is not None:
                 self.current_episode['state_values'][agent_handle].append(state_values[agent_handle])
                 self.current_episode['next_state_values'][agent_handle].append(next_state_values[agent_handle])
+
+            # add extras only if the dictionary is not empty
+            if extras:
+                if not self.current_episode['extras']:
+                    self.current_episode['extras'] = {key: [[] for _ in range(self.n_agents)] for key in extras.keys()}
+                for key in extras.keys():
+                    self.current_episode['extras'][key][agent_handle].append(extras[key][agent_handle])
         self.total_steps += 1
 
 
@@ -128,6 +140,20 @@ class MultiAgentRolloutBuffer:
                 dones.extend(episode['dones'][agent_handle])
                 if gaes:
                     gaes.extend(episode['gaes'][agent_handle])
+        
+        # add extras
+        extras = {}
+        for key in episode['extras'].keys():
+            extras[key] = []
+            for episode in self.episodes:
+                for agent_handle in range(self.n_agents):
+                    extras[key].extend(episode['extras'][key][agent_handle])
+
+            if shuffle: 
+                extras[key] = [extras[key][i] for i in indices]
+            
+            extras[key] = torch.stack(extras[key])
+
 
         if shuffle:
             indices = torch.randperm(len(states))
@@ -150,7 +176,8 @@ class MultiAgentRolloutBuffer:
                     'actions': torch.stack(actions).clone().detach(),
                     'log_probs': torch.stack(log_probs).clone().detach(),
                     'rewards': torch.tensor(rewards).clone().detach(),
-                    'dones': torch.tensor(dones, dtype=torch.float32).clone().detach()
+                    'dones': torch.tensor(dones, dtype=torch.float32).clone().detach(), 
+                    'extras': extras 
                     }
         except RuntimeError:
             return None

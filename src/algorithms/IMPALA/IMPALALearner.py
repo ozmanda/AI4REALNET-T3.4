@@ -208,7 +208,7 @@ class IMPALALearner():
 
         # forward pass to get actions and log probabilities
         # TODO: figure out how to pass hidden states for LSTM
-        _, target_log_probs, _ = self.controller.sample_action(rollout['states'])
+        _, target_log_probs, _, _ = self.controller.sample_action(states = rollout['states'], extras = rollout['extras']) # extras = prev_hidden_states for LSTM
         behaviour_log_probs = rollout['log_probs']
 
         # compute v-trace targets and advantages
