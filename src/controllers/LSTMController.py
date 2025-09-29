@@ -25,7 +25,6 @@ class LSTMController(nn.Module):
         self._init_hyperparameters(config)
 
         self._build_lstm_network()
-        self.lstm_network.reset_network(n_agents=self.config['n_agents'])
         self.update_step: int = 0
 
     def _init_hyperparameters(self, config: Dict) -> None:
@@ -69,27 +68,34 @@ class LSTMController(nn.Module):
     def update_weights(self, network_params: Dict) -> None:
         self.lstm_network.update_weights(network_params)
     
+    def reset_hidden_states(self) -> None:
+        self.lstm_network.reset_hidden_states()
 
-    def state_values(self, states: Tensor) -> Tensor:
+    def state_values(self, states: Tensor, extras: Dict[str, Tensor], next_states: Tensor = None) -> Tensor:
         """
         Get the state values from the critic network for the current and next states.
         
         Parameters:
-            - states: Tensor of shape (batch_size, state_size)
-            - next_states: Tensor of shape (batch_size, state_size)
+            - states:       Tensor of shape (batch_size, state_size)
+            - extras:       Dict containing the LSTM hidden and cell states with shape (batch_size, lstm_hidsize)
+            - next_states:  Tensor of shape (batch_size, state_size)
         
         Returns:
             - state_values: Tensor of shape (batch_size, 1)
             - next_state_values: Tensor of shape (batch_size, 1)
         """
-        state_values = self.lstm_network.state_values(states)
-        return state_values
-        
+        hidden = (extras['prev_hidden_state'].unsqueeze(0), extras['prev_cell_state'].unsqueeze(0)) # (1, batchsize, lstm_hidsize)
+        state_values = self.lstm_network.state_values(states, hidden=hidden)
+        if next_states is not None: 
+            hidden = (extras['next_hidden_state'].unsqueeze(0), extras['next_cell_state'].unsqueeze(0)) # (1, batchsize, lstm_hidsize)
+            next_state_values = self.lstm_network.state_values(next_states, hidden=hidden)
+            return state_values, next_state_values
+        else: 
+            return state_values
 
-    def sample_action(self, states: Tensor, extras: Dict = {}) -> Tuple[Tensor, Tensor, Tensor, Dict[str, Tensor]]:
+    def sample_action(self, states: Tensor) -> Tuple[Tensor, Tensor, Tensor, Dict[str, Tensor]]:
         """
-        Get the actions from the actor network based on the current state. Used for sampling actions during training 
-        and evaluating the target policy during the update step.
+        Get the actions from the actor network based on the current state. Used for sampling actions during training.
         
         Parameters:
             - state: Tensor of shape (n_agents, state_size)
@@ -98,15 +104,33 @@ class LSTMController(nn.Module):
             - actions: Tensor of shape (n_agents, 1)
             - log_probs: Tensor of shape (n_agents, 1)
         """
-        if not extras:
-            # sampling during training - hidden states maintained by the LSTM network
-            actions, log_probs, values, hidden_states = self.lstm_network.forward(states)
-            return actions, log_probs, values, hidden_states
+        # sampling during training - hidden states maintained by the LSTM network
+        actions, log_probs, values, hidden_states = self.lstm_network.forward(states)
+        return actions, log_probs, values, hidden_states
+    
+
+    def evaluate(self, states: Tensor, actions: Tensor, next_states: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        """
+        Computes the log-probabilities of the given actions under the current policy and the state values for current and next states.
         
-        else:
-            # evaluating during the update step - hidden states provided by the rollout buffer
-            _, log_probs, _, _ = self.lstm_network(states, (extras['prev_hidden_state'].unsqueeze(0), extras['prev_cell_state'].unsqueeze(0)), select_best_action=False)
-            return None, log_probs, None, None 
+        Parameters:
+            - states:       Tensor of shape (batch_size, state_size)
+            - actions:      Tensor of shape (batch_size, 1)
+            - next_states:  Tensor of shape (batch_size, state_size)
+
+        Returns:
+            - log_probs:        Tensor of shape (batch_size, 1)
+            - state_values:     Tensor of shape (batch_size, 1)
+            - next_state_values Tensor of shape (batch_size, 1)
+        """
+        return self.lstm_network.evaluate(states, actions, next_states)
+                
+    
+    def evaluate_action(self, states: Tensor, actions: Tensor, extras: Dict) -> Tensor:
+        """
+        Computes the log-probabilities of the given actions under the current policy.
+        """
+        return self.lstm_network.evaluate_action(states, actions, extras)
         
 
     def select_action(self, state: torch.Tensor) -> torch.Tensor:
