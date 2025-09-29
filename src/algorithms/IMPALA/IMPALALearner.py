@@ -170,6 +170,7 @@ class IMPALALearner():
         self.barrier.wait()  # ensure all workers have finished
 
         # drain any final episode info
+        print("Draining final episode info...")
         self._log_episode_info()
 
         # terminate all workers
@@ -180,6 +181,7 @@ class IMPALALearner():
                 w.terminate()
         
         wandb.finish()
+        self.manager.shutdown()
 
 
     def _optimise(self, rollout: MultiAgentRolloutBuffer) -> Dict[str, List[float]]:
@@ -202,39 +204,62 @@ class IMPALALearner():
 
     def _loss(self, rollout: MultiAgentRolloutBuffer, batch_size: int) -> Tuple[Tensor, Tensor, Tensor]:
         """
-        Compute the actor and critic loss for the given rollout buffer considering v-trace correction. 
+        Compute the actor and critic loss for the given rollout buffer considering v-trace correction.
         """
-        rollout = rollout.get_transitions(gaes=False)
+        policy_loss_sum = torch.tensor(0.0)
+        value_loss_sum = torch.tensor(0.0)
+        entropy_sum = torch.tensor(0.0)
+        entropy_count = 0
+        total_steps = 0
 
-        # forward pass to get actions and log probabilities
-        # TODO: figure out how to pass hidden states for LSTM
-        _, target_log_probs, _, _ = self.controller.sample_action(states = rollout['states'], extras = rollout['extras']) # extras = prev_hidden_states for LSTM
-        behaviour_log_probs = rollout['log_probs']
+        for episode in rollout.episodes:
+            for agent in range(rollout.n_agents):
+                states = torch.stack(episode['states'][agent])  # (episode_length, state_size)
+                next_states = torch.stack(episode['next_states'][agent])  # (episode_length, state_size)
+                actions = torch.stack(episode['actions'][agent])  # (episode_length, 1)
+                behaviour_log_probs = torch.stack(episode['log_probs'][agent])  # (episode_length, 1)
+                rewards = torch.tensor(episode['rewards'][agent])  # (episode_length,)
+                dones = torch.tensor(episode['dones'][agent])  # (episode_length,)
 
-        # compute v-trace targets and advantages
-        v_s, pg_adv = vtrace(behaviour_log_probs = behaviour_log_probs, target_log_probs = target_log_probs, 
-                             actions = rollout['actions'], rewards = rollout['rewards'], 
-                             state_values = rollout['state_values'], next_state_values = rollout['next_state_values'], 
-                             dones = rollout['dones'], gamma = self.gamma, 
-                             rho_bar = self.rho_bar, c_bar = self.c_bar)
-        
-        # calculate value loss
-        value_loss = 0.5 * torch.mean((v_s.detach() - rollout['state_values'])**2)
+                target_log_probs, target_state_values, target_next_state_values = self.controller.evaluate(states=states, actions=actions, next_states=next_states)
 
-        # calculate policy gradient loss
-        policy_loss = -torch.mean(pg_adv * target_log_probs)
+                v_s, pg_adv = vtrace(
+                    behaviour_log_probs=behaviour_log_probs,
+                    target_log_probs=target_log_probs,
+                    rewards=rewards,
+                    state_values=target_state_values,
+                    next_state_values=target_next_state_values,
+                    dones=dones,
+                    gamma=self.gamma,
+                    rho_bar=self.rho_bar,
+                    c_bar=self.c_bar
+                )
+            
+                total_steps += rewards.size(0)
 
-        # entropy regularisation
-        entropy = -(target_log_probs.exp() * target_log_probs).sum(-1).mean()
+                policy_loss = (-pg_adv * target_log_probs).sum()
+                policy_loss_sum += policy_loss
+
+                value_loss = 0.5 * torch.mean((v_s.detach() - target_state_values)**2)
+                value_loss_sum += value_loss
+
+                entropy = -(target_log_probs.exp() * target_log_probs).sum(-1)
+                entropy_sum += entropy.sum()
+                entropy_count += 1
+
+        # normalize losses by total steps
+        policy_loss_sum /= total_steps
+        value_loss_sum /= total_steps
+        entropy_mean = entropy_sum/entropy_count 
 
         # calculate total training loss
-        total_loss = policy_loss + self.value_loss_coeff * value_loss - self.entropy_coeff * entropy
+        total_loss = policy_loss_sum + self.value_loss_coeff * value_loss_sum - self.entropy_coeff * entropy_mean
 
-        return total_loss, {"policy_loss": policy_loss, 
-                            "value_loss": value_loss,
-                            "entropy_loss": entropy}
-    
-    
+        return total_loss, {"policy_loss": policy_loss_sum,
+                            "value_loss": value_loss_sum,
+                            "entropy_loss": entropy_mean}
+
+
     def _gather_rollouts(self) -> None:
         """ Gather episodes from rollout queue and add to training rollout. """
         for _ in range(self.n_workers):
@@ -244,6 +269,8 @@ class IMPALALearner():
                 self._log_episode_info()
             except queue.Empty:
                 break
+            except MemoryError:
+                pass
 
 
     def _broadcast_controller_state(self) -> None:
@@ -262,6 +289,7 @@ class IMPALALearner():
                 wandb.log({
                     f'worker_{worker_id}/episode_reward': log_info['episode/reward'],
                     f'worker_{worker_id}/episode_length': log_info['episode/average_length'],
+                    f'worker_{worker_id}/total_reward': log_info['episode/total_reward'],
                     # global aggregated metrics
                     'episode/average_reward': log_info['episode/reward'],
                 })
