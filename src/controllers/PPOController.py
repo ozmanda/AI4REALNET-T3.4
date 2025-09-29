@@ -103,7 +103,7 @@ class PPOController(nn.Module):
         return actor_params, critic_params
     
 
-    def state_values(self, states: Tensor) -> Tensor:
+    def state_values(self, states: Tensor, extras: Dict[str, Tensor], next_states: Tensor = None) -> Tensor:
         """
         Get the state values from the critic network for the current and next states.
         
@@ -116,10 +116,14 @@ class PPOController(nn.Module):
             - next_state_values: Tensor of shape (batch_size, 1)
         """
         state_values = self.critic_network(states)
-        return state_values
+        if next_states: 
+            next_state_values = self.critic_network(next_states)
+            return state_values, next_state_values
+        else:
+            return state_values
 
 
-    def sample_action(self, states: torch.Tensor, extras: Dict = None) -> torch.Tensor:
+    def sample_action(self, states: torch.Tensor) -> torch.Tensor:
         """
         Get the action from the actor network based on the current state.
         
@@ -157,6 +161,14 @@ class PPOController(nn.Module):
             log_probs = torch.log_softmax(logits, dim=1)
         return actions, log_probs
     
+
+    def evaluate_action(self, states: Tensor, actions: Tensor, extras: Dict) -> Tensor:
+        """
+        Computes the log-probabilities of the given actions under the current policy.
+        """
+        logits = self._make_logits(states)
+        action_distribution = torch.distributions.Categorical(logits=logits)
+        return action_distribution.log_prob(actions)
 
     def get_state_dict(self) -> Dict:
         """
