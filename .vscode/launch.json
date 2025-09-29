@@ -10,7 +10,7 @@
             "name": "main.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "main.py",
+            "program": "${workspaceFolder}main.py",
             "console": "integratedTerminal",
             "args": [
                 "--epochs", "6",
@@ -27,14 +27,21 @@
             "name": "PPO Synchronous",
             "type": "debugpy",
             "request": "launch",
-            "program": "run/ppo.py",
+            "program": "${workspaceFolder}run/ppo.py",
+            "console": "integratedTerminal",
+        },
+        {
+            "name": "IMPALA Asynchronous Test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}run/impala.py",
             "console": "integratedTerminal",
         },
         {
             "name": "IMPALA Asynchronous",
-            "type": "debugpy",
+            "type": "python",
             "request": "launch",
-            "program": "run/impala.py",
+            "program": "${workspaceFolder}/run/impala.py",
             "console": "integratedTerminal",
         }
     ]
