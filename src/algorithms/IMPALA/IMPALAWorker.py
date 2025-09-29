@@ -130,6 +130,8 @@ class IMPALAWorker(mp.Process):
 
         self.barrier.wait()
         print(f'Worker {self.worker_id} done after {self.total_episodes} episodes')
+        self.barrier.wait()
+        return 
 
         
     def _try_refresh_weights(self):

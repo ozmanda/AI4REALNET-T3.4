@@ -167,19 +167,19 @@ class IMPALALearner():
 
         self.done_event.set()
         print("Training complete, waiting for workers to terminate...")
-        self.barrier.wait()  # ensure all workers have finished
+        # self.barrier.wait()  # ensure all workers have finished
 
         # drain any final episode info
         print("Draining final episode info...")
         self._log_episode_info()
 
+        print('terminating workers...')
         # terminate all workers
-        for w in workers:
-            w.join()
         for w in workers:
             if w.is_alive():
                 w.terminate()
         
+        print("All workers terminated. Finishing WandB run and shutting down manager...")
         wandb.finish()
         self.manager.shutdown()
 
