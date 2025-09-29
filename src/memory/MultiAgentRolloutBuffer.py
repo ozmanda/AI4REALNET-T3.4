@@ -30,7 +30,6 @@ class MultiAgentRolloutBuffer:
 
 
     def _reset_current_episode(self) -> None:
-        # TODO: add extras (Dict) for different controllers (e.g. hidden states for LSTM)
         self.current_episode: Dict[str, List] = {
             'states': [[] for _ in range(self.n_agents)],
             'state_values': [[] for _ in range(self.n_agents)],
@@ -103,7 +102,8 @@ class MultiAgentRolloutBuffer:
             self.current_episode['episode_reward'][agent] = sum(self.current_episode['rewards'][agent]) / len(self.current_episode['rewards'][agent])
 
         self.current_episode['average_episode_length'] = np.sum(self.current_episode['episode_length']) / self.n_agents
-        self.current_episode['average_episode_reward'] = sum(self.current_episode['episode_reward']) / self.n_agents
+        self.current_episode['total_reward'] = sum(self.current_episode['episode_reward'])  
+        self.current_episode['average_episode_reward'] = self.current_episode['total_reward'] / self.n_agents
 
         if verbose > 0:
             print(f"\nEpisode {self.n_episodes + 1} - Average Reward: {self.current_episode['average_episode_reward']}\n")
