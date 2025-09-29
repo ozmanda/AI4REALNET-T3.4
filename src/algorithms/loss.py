@@ -33,32 +33,43 @@ def policy_loss(gae: Tensor, new_log_prob: Tensor, old_log_prob: Tensor, clip_ep
     return actor_loss
 
 
-def vtrace(behaviour_log_probs: Tensor, target_log_probs: Tensor, actions: Tensor, rewards: Tensor, state_values: Tensor, next_state_values: Tensor,
+def vtrace(behaviour_log_probs: Tensor, target_log_probs: Tensor, rewards: Tensor, state_values: Tensor, next_state_values: Tensor,
            dones: Tensor, gamma: float, rho_bar: float = 1.0, c_bar: float = 1.0) -> Tuple[Tensor, Tensor]: 
     """
     V-trace algorithm for off-policy actor-critic methods like IMPALA. Assumes that the final states already contain the bootstrap values.
 
     Parameters: 
-    - behaviour_log_probs: Log probabilities of the behaviour policy at the chosen actions
-    - target_log_probs: Log probabilities of the target policy at the chosen actions
-    - actions: Actions taken by the agent
-    - rewards: Rewards received by the agent
-    - values: State values predicted by the critic
-    - gamma: Discount factor
-    - rho_bar: Importance sampling ratio (default: 1.0)
-    - c_bar: Clipping parameter (default: 1.0)
+    - behaviour_log_probs:      Tensor -> Log probabilities of the behaviour policy at the chosen actions
+    - target_log_probs:         Tensor -> Log probabilities of the target policy at the chosen actions
+    - actions:                  Tensor -> Actions taken by the agent
+    - rewards:                  Tensor -> Rewards received by the agent
+    - values:                   Tensor -> State values predicted by the critic
+    - gamma:                    float  -> Discount factor
+    - rho_bar:                  float  -> Importance sampling ratio (default: 1.0)
+    - c_bar:                    float  -> Clipping parameter (default: 1.0)
 
     Returns:
-    - v_s: corrected value targets
-    - pg_adv: policy gradient advantages
+    - v_s:                      Tensor -> corrected value targets
+    - pg_adv:                   Tensor -> policy gradient advantages
     """
-    # calculate advantages
-    advantages = rewards + gamma * next_state_values * (1 - dones) - state_values
-    rhos = torch.exp(target_log_probs - behaviour_log_probs)
-    clipped_rhos = torch.clamp(rhos, max=rho_bar) # same as min(rho_bar, rhos)
-    cs = torch.clamp(rhos, max=c_bar)
+    with torch.no_grad():
+        discounts = gamma * (1 - dones.long()) #(batchsize)
+        rhos = torch.exp(target_log_probs - behaviour_log_probs) #(batchsize)
+        clipped_rhos = torch.clamp(rhos, max=rho_bar) # same as min(rho_bar, rhos) -> (batchsize)
+        clipped_cs = torch.clamp(rhos, max=c_bar) # same as min(c_bar, rhos) -> (batchsize)
 
-    v_s = torch.zeros_like(state_values)
-    v_s = state_values + clipped_rhos * advantages + gamma * cs * (v_s - next_state_values) * (1 - dones)
+        deltas = clipped_rhos * (rewards + discounts * next_state_values.squeeze(-1) - state_values.squeeze(-1))  #(batchsize)
+
+        # calculate v-trace targets
+        vs = torch.zeros_like(state_values)
+        next_vs = next_state_values[-1]
+        for t in reversed(range(state_values.size(0))):
+            vs_t = state_values[t] + deltas[t] + discounts[t] * clipped_cs[t] * (next_vs - next_state_values[t])
+            vs[t] = vs_t
+            next_vs = vs_t
+        
+        # calculate policy gradient advantages
+        td_target = rewards + discounts * torch.cat([vs[1:], next_state_values[-1].unsqueeze(0)], dim=0)
+        pg_advantages = clipped_rhos * (td_target - state_values)
     
-    return v_s, advantages
+    return vs, pg_advantages
