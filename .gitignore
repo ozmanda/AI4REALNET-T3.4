@@ -1,6 +1,6 @@
 .venv/
 **/__pycache__/
-src/models/test/
+models/
 wandb/
 **.png
 archive/
