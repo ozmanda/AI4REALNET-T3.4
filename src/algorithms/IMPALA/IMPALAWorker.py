@@ -12,7 +12,8 @@ from multiprocessing.managers import DictProxy
 from src.utils.obs_utils import obs_dict_to_tensor
 from src.configs.EnvConfig import FlatlandEnvConfig
 from src.controllers.PPOController import PPOController
-from src.configs.ControllerConfigs import PPOControllerConfig
+from src.configs.ControllerConfigs import PPOControllerConfig, LSTMControllerConfig
+from src.controllers.LSTMController import LSTMController
 from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
 
 class IMPALAWorker(mp.Process):
@@ -21,7 +22,7 @@ class IMPALAWorker(mp.Process):
     the entry point is the run() function. This 
     """
 
-    def __init__(self, worker_id: Union[str, int], env_config: FlatlandEnvConfig, controller_config: PPOControllerConfig, 
+    def __init__(self, worker_id: Union[str, int], env_config: FlatlandEnvConfig, controller_config: Union[PPOControllerConfig, LSTMControllerConfig], 
                  logging_queue: mp.Queue, rollout_queue: mp.Queue, shared_weights: DictProxy, barrier, done_event: Event,
                  max_steps: Tuple = (10000, 1000), device: str = 'cpu'):
         super().__init__()
@@ -57,7 +58,7 @@ class IMPALAWorker(mp.Process):
         self.env: RailEnv = self.env_config.create_env()
 
 
-    def run(self) -> MultiAgentRolloutBuffer:
+    def run(self) -> None:
         """
         Entry point for worker.run()
         Run a single episode in the environment and collect rollouts.
@@ -91,7 +92,7 @@ class IMPALAWorker(mp.Process):
                                                            max_depth=self.max_depth, 
                                                            n_nodes=self.controller.config['n_nodes'])
 
-            next_state_values = self.controller.state_values(next_state_tensor)
+            next_state_values = self.controller.state_values(next_state_tensor, extras=extras) # (n_agents, 1)
             self.rollout.add_transitions(states=current_state_tensor.detach(), 
                                          state_values=state_values.detach(),
                                          actions=actions_dict, 
@@ -120,9 +121,12 @@ class IMPALAWorker(mp.Process):
                 self.logging_queue.put({'worker_id': self.worker_id,
                                         'episode': self.total_episodes,
                                         'episode/reward': self.rollout.episodes[-1]['average_episode_reward'],
-                                        'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})
+                                        'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],
+                                        'episode/total_reward': self.rollout.episodes[-1]['total_reward'],})
 
                 self._try_refresh_weights()
+                if type(self.controller) == LSTMController:
+                    self.controller.reset_hidden_states()
 
         self.barrier.wait()
         print(f'Worker {self.worker_id} done after {self.total_episodes} episodes')
