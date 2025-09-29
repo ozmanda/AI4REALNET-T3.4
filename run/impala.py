@@ -17,7 +17,7 @@ from src.utils.file_utils import load_config_file
 from src.utils.obs_utils import calculate_state_size
 
 from src.configs.EnvConfig import FlatlandEnvConfig
-from src.configs.ControllerConfigs import PPOControllerConfig
+from src.configs.ControllerConfigs import PPOControllerConfig, LSTMControllerConfig
 from src.algorithms.IMPALA.IMPALALearner import IMPALALearner
 
 
@@ -43,7 +43,8 @@ def init_random_seeds(random_seed: int, cuda_deterministic: bool = False) -> Non
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a PPO agent')
-    parser.add_argument('--config_path', type=str, default='src/configs/IMPALA_config.yaml', help='Path to the configuration file')
+    parser.add_argument('--config_path', type=str, default='src/configs/IMPALA_LSTM.yaml', help='Path to the configuration file')
+    parser.add_argument('--controller_type', type=str, default='lstm', help='type of controller')
     parser.add_argument('--random_seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the training on (cpu or cuda)')
     parser.add_argument('--n_workers', type=int, default=5, help='Number of parallel workers for training')
@@ -65,7 +66,11 @@ if __name__ == '__main__':
 
     # prepare controller
     config['controller_config']['n_nodes'], config['controller_config']['state_size'] = calculate_state_size(env_config.observation_builder_config['max_depth'])
-    controller_config = PPOControllerConfig(config['controller_config'])
+    if args.controller_type.lower() == 'ppo':
+        controller_config = PPOControllerConfig(config['controller_config'])
+    elif args.controller_type.lower() == 'lstm': 
+        config['controller_config']['n_agents'] = env_config.n_agents
+        controller_config = LSTMControllerConfig(config['controller_config'])
 
 
     train_impala(random_seed = args.random_seed,
