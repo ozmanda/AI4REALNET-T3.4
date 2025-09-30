@@ -245,6 +245,18 @@
                              <button id="selectStationsOnMapButton" class="secondary" title="Select stations by clicking them on the map">Select on Map</button>
                         </div>
                     </div>
+                    <!-- NEW: Start Cell Selection -->
+                    <div class="editor-field" style="display:flex; align-items:center; gap: 10px; margin-top: 10px;">
+                        <label>Start Cell:</label>
+                        <span id="startCellDisplay" style="flex-grow:1; font-family: monospace; font-size: 0.85em; color: #555;">(Not selected)</span>
+                        <button id="selectStartCellButton" class="secondary" disabled>Select Start Cell</button>
+                    </div>
+                    <!-- NEW: End Cell Selection -->
+                    <div class="editor-field" style="display:flex; align-items:center; gap: 10px;">
+                        <label>End Cell:</label>
+                        <span id="endCellDisplay" style="flex-grow:1; font-family: monospace; font-size: 0.85em; color: #555;">(Not selected)</span>
+                        <button id="selectEndCellButton" class="secondary" disabled>Select End Cell</button>
+                    </div>
                     <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
                         <button id="cancelLineEditButton" class="secondary">Cancel</button>
                         <button id="saveLineButton">Save Line</button>
@@ -279,7 +291,12 @@
                             <label for="scheduleTravelFactorInput">Travel Factor:</label>
                             <input type="number" id="scheduleTravelFactorInput" value="1.1" step="0.05" min="1">
                         </div>
-                         <div class="shift-control" style="grid-column: 2;">
+                        <!-- NEW Dwell Time Input -->
+                        <div class="editor-field">
+                            <label for="scheduleDwellTimeInput">Dwell Time:</label>
+                            <input type="number" id="scheduleDwellTimeInput" value="2" step="1" min="0">
+                        </div>
+                         <div class="shift-control" style="grid-column: 3;">
                            <div class="editor-field">
                                <label for="scheduleShiftInput">Shift Amount:</label>
                                <input type="number" id="scheduleShiftInput" value="10" step="1">
@@ -298,7 +315,6 @@
                                 <th>Departure</th>
                                 <th>Latest Arrival</th>
                                 <th>Earliest Departure</th>
-                                <th>Dwell Time</th>
                             </tr>
                         </thead>
                         <tbody id="scheduleStopsTableBody">
@@ -410,6 +426,11 @@
     const selectionBarInfo = document.getElementById('selectionBarInfo');
     const undoStationSelectionButton = document.getElementById('undoStationSelectionButton');
     const finishStationSelectionButton = document.getElementById('finishStationSelectionButton');
+    // NEW: Cell selection buttons and display
+    const startCellDisplay = document.getElementById('startCellDisplay');
+    const selectStartCellButton = document.getElementById('selectStartCellButton');
+    const endCellDisplay = document.getElementById('endCellDisplay');
+    const selectEndCellButton = document.getElementById('selectEndCellButton');
 
     // Schedules Tab References
     const schedulesListView = document.getElementById('schedulesListView');
@@ -428,6 +449,8 @@
     const saveScheduleButton = document.getElementById('saveScheduleButton');
     const cancelScheduleEditButton = document.getElementById('cancelScheduleEditButton');
     const scheduleValidationWarning = document.getElementById('scheduleValidationWarning');
+    // NEW: Dwell Time Input Reference
+    const scheduleDwellTimeInput = document.getElementById('scheduleDwellTimeInput');
 
     // Trains Tab References
     const trainsListView = document.getElementById('trainsListView');
@@ -457,7 +480,11 @@
     let historyStack = [], historyIndex = -1;
     let isEditingInOpsManager = false;
     let isSelectingStationsForLine = false;
-    let lineBuilderData = { stations: [], originalStations: '' };
+    let isSelectingStartCell = false; 
+    let isSelectingEndCell = false;   
+    let currentCellSelectionTarget = null; // 'start' or 'end'
+    // UPDATED: lineBuilderData is a temporary holding area for line editing. It gets reset/populated when showLineEditor is called.
+    let lineBuilderData = { stations: [], originalStations: '', startCell: null, endCell: null };
 
     // --- DATA MODELS ---
     let lines = [];
@@ -482,7 +509,7 @@
 
     const CYCLEABLE_CASE_INDEXES = [ CI.EMPTY, CI.V_STRAIGHT, CI.H_STRAIGHT, CI.S_N_L, CI.S_N_R, CI.DIAMOND_X, CI.SLIP_SW, CI.DBL_SLIP_NW_SE, CI.SYM_N, CI.DEAD_N, CI.TURN_N_E ];
     const TILE_DEFINITIONS = {[CI.EMPTY]:{N:!1,E:!1,S:!1,W:!1},[CI.V_STRAIGHT]:{N:!0,E:!1,S:!0,W:!1},[CI.H_STRAIGHT]:{N:!1,E:!0,S:!1,W:!0},[CI.S_N_L]:{N:!0,E:!0,S:!0,W:!1},[CI.S_E_L]:{N:!1,E:!0,S:!0,W:!0},[CI.S_S_L]:{N:!0,E:!1,S:!0,W:!0},[CI.S_W_L]:{N:!0,E:!0,S:!1,W:!0},[CI.S_N_R]:{N:!0,E:!1,S:!0,W:!0},[CI.S_E_R]:{N:!0,E:!0,S:!1,W:!0},[CI.S_S_R]:{N:!0,E:!0,S:!0,W:!1},[CI.S_W_R]:{N:!1,E:!0,S:!0,W:!0},[CI.DIAMOND_X]:{N:!0,E:!0,S:!0,W:!0},[CI.SLIP_SW]:{N:!0,E:!0,S:!0,W:!0},[CI.SLIP_NW]:{N:!0,E:!0,S:!0,W:!0},[CI.SLIP_NE]:{N:!0,E:!0,S:!0,W:!0},[CI.SLIP_SE]:{N:!0,E:!0,S:!0,W:!0},[CI.DBL_SLIP_NW_SE]:{N:!0,E:!0,S:!0,W:!0},[CI.DBL_SLIP_NE_SW]:{N:!0,E:!0,S:!0,W:!0},[CI.SYM_S]:{N:!1,E:!0,S:!0,W:!0},[CI.SYM_W]:{N:!0,E:!1,S:!0,W:!0},[CI.SYM_N]:{N:!0,E:!0,S:!1,W:!0},[CI.SYM_E]:{N:!0,E:!0,S:!0,W:!1},[CI.DEAD_S]:{N:!1,E:!1,S:!0,W:!1},[CI.DEAD_W]:{N:!1,E:!1,S:!1,W:!0},[CI.DEAD_N]:{N:!0,E:!1,S:!1,W:!1},[CI.DEAD_E]:{N:!1,E:!0,S:!1,W:!1},[CI.TURN_S_E]:{N:!1,E:!0,S:!0,W:!1},[CI.TURN_S_W]:{N:!1,E:!1,S:!0,W:!0},[CI.TURN_N_W]:{N:!0,E:!1,S:!1,W:!0},[CI.TURN_N_E]:{N:!0,E:!0,S:!1,W:!1}};
-    const ROTATION_MAP = {[CI.V_STRAIGHT]:CI.H_STRAIGHT,[CI.H_STRAIGHT]:CI.V_STRAIGHT,[CI.S_N_L]:CI.S_E_L,[CI.S_E_L]:CI.S_S_L,[CI.S_S_L]:CI.S_W_L,[CI.S_W_L]:CI.S_N_L,[CI.S_N_R]:CI.S_E_R,[CI.S_E_R]:CI.S_S_R,[CI.S_S_R]:CI.S_W_R,[CI.S_W_R]:CI.S_N_R,[CI.SLIP_SW]:CI.SLIP_NW,[CI.SLIP_NW]:CI.SLIP_NE,[CI.SLIP_NE]:CI.SLIP_SE,[CI.SLIP_SE]:CI.SLIP_SW,[CI.DBL_SLIP_NW_SE]:CI.DBL_SLIP_NE_SW,[CI.DBL_SLIP_NE_SW]:CI.DBL_SLIP_NW_se,[CI.SYM_S]:CI.SYM_W,[CI.SYM_W]:CI.SYM_N,[CI.SYM_N]:CI.SYM_E,[CI.SYM_E]:CI.SYM_S,[CI.DEAD_S]:CI.DEAD_W,[CI.DEAD_W]:CI.DEAD_N,[CI.DEAD_N]:CI.DEAD_E,[CI.DEAD_E]:CI.DEAD_S,[CI.TURN_S_E]:CI.TURN_S_W,[CI.TURN_S_W]:CI.TURN_N_W,[CI.TURN_N_W]:CI.TURN_N_E,[CI.TURN_N_E]:CI.TURN_S_E};
+    const ROTATION_MAP = {[CI.V_STRAIGHT]:CI.H_STRAIGHT,[CI.H_STRAIGHT]:CI.V_STRAIGHT,[CI.S_N_L]:CI.S_E_L,[CI.S_E_L]:CI.S_S_L,[CI.S_S_L]:CI.S_W_L,[CI.S_W_L]:CI.S_N_L,[CI.S_N_R]:CI.S_E_R,[CI.S_E_R]:CI.S_S_R,[CI.S_S_R]:CI.S_W_R,[CI.S_W_R]:CI.S_N_R,[CI.SLIP_SW]:CI.SLIP_NW,[CI.SLIP_NW]:CI.SLIP_NE,[CI.SLIP_NE]:CI.SLIP_SE,[CI.SLIP_SE]:CI.SLIP_SW,[CI.DBL_SLIP_NW_SE]:CI.DBL_SLIP_NE_SW,[CI.DBL_SLIP_NE_SW]:CI.DBL_SLIP_NW_SE,[CI.SYM_S]:CI.SYM_W,[CI.SYM_W]:CI.SYM_N,[CI.SYM_N]:CI.SYM_E,[CI.SYM_E]:CI.SYM_S,[CI.DEAD_S]:CI.DEAD_W,[CI.DEAD_W]:CI.DEAD_N,[CI.DEAD_N]:CI.DEAD_E,[CI.DEAD_E]:CI.DEAD_S,[CI.TURN_S_E]:CI.TURN_S_W,[CI.TURN_S_W]:CI.TURN_N_W,[CI.TURN_N_W]:CI.TURN_N_E,[CI.TURN_N_E]:CI.TURN_S_E};
     const FLIP_MAP = {[CI.S_N_L]:CI.S_S_R,[CI.S_S_R]:CI.S_N_L,[CI.S_E_L]:CI.S_W_R,[CI.S_W_R]:CI.S_E_L,[CI.S_S_L]:CI.S_N_R,[CI.S_N_R]:CI.S_S_L,[CI.S_W_L]:CI.S_E_R,[CI.S_E_R]:CI.S_W_L,[CI.DBL_SLIP_NW_SE]:CI.DBL_SLIP_NE_SW,[CI.DBL_SLIP_NE_SW]:CI.DBL_SLIP_NW_SE};
 
     // --- Pathfinding Constants ---
@@ -544,7 +571,7 @@
         schedules = state.schedules ? JSON.parse(JSON.stringify(state.schedules)) : [];
         trainClasses = state.trainClasses ? JSON.parse(JSON.stringify(state.trainClasses)) : [ { id: 1, name: "High-Speed", speed: 1.0 }, { id: 2, name: "Express", speed: 0.8 }, { id: 3, name: "Local", speed: 0.6 }, { id: 4, name: "Cargo", speed: 0.5 }];
         if (numRows !== state.numRows) document.getElementById('rows').value = state.numRows; 
-        if (numCols !== state.numCols) document.getElementById('cols').value = state.numCols; 
+        if (numCols !== state.numCols) document.getElementById('cols').value = state.cols; 
         if (cellSize !== state.cellSize) document.getElementById('cellSize').value = state.cellSize; 
         setupDimensions(); selectedCellCoords = null; updateSelectionUI(); validateGrid(); drawGrid(); exportAllDataToTextAreas(); updateHistoryButtons(); 
     }
@@ -553,130 +580,105 @@
     function updateHistoryButtons() { undoButton.disabled = historyIndex <= 0; redoButton.disabled = historyIndex >= historyStack.length - 1; }
 
     // --- Pathfinding Engine (BFS) ---
-    function findShortestPath(startStationId, endStationId) {
-        const startStationCells = [];
-        const endStationCells = new Set();
-        for (let r = 0; r < numRows; r++) {
-            for (let c = 0; c < numCols; c++) {
-                if (gridData[r][c].isStation) {
-                    if (gridData[r][c].stationId === startStationId) startStationCells.push({ r, c });
-                    if (gridData[r][c].stationId === endStationId) endStationCells.add(`${r},${c}`);
-                }
-            }
-        }
-        if (startStationCells.length === 0 || endStationCells.size === 0) return -1;
+
+    // Pathfinding function between two specific cells (r,c)
+    function findShortestPathBetweenSpecificCells(startR, startC, endR, endC) {
         const queue = [];
-        const visited = new Set(); 
-        for (const stationCell of startStationCells) {
-            for (const exitDir of Object.values(D)) {
-                const delta = DIRECTION_DELTA[exitDir];
-                const nr = stationCell.r + delta.r;
-                const nc = stationCell.c + delta.c;
-                if (nr < 0 || nr >= numRows || nc < 0 || nc >= numCols) continue;
-                const neighborCell = gridData[nr][nc];
-                const neighborDef = TILE_DEFINITIONS[neighborCell.caseIndex];
-                const entryDirForNeighbor = OPPOSITE_DIRECTION[exitDir];
-                if (neighborDef && neighborDef[entryDirForNeighbor]) {
-                    const visitedKey = `${nr},${nc},${entryDirForNeighbor}`;
-                    if (!visited.has(visitedKey)) {
-                        queue.push({ r: nr, c: nc, dist: 1, cameFrom: entryDirForNeighbor });
-                        visited.add(visitedKey);
-                    }
+        const visited = new Set(); // Stores visited cells as "r,c,cameFrom" to track entry direction
+
+        // Initial setup: Try all valid exits from the start cell
+        for (const exitDir of Object.values(D)) {
+            const delta = DIRECTION_DELTA[exitDir];
+            const nr = startR + delta.r;
+            const nc = startC + delta.c;
+
+            if (nr < 0 || nr >= numRows || nc < 0 || nc >= numCols) continue;
+
+            const neighborCell = gridData[nr][nc];
+            const neighborDef = TILE_DEFINITIONS[neighborCell.caseIndex];
+            const entryDirForNeighbor = OPPOSITE_DIRECTION[exitDir];
+
+            if (neighborDef && neighborDef[entryDirForNeighbor]) { // Check if neighbor track accepts entry from this direction
+                const visitedKey = `${nr},${nc},${entryDirForNeighbor}`;
+                if (!visited.has(visitedKey)) {
+                    queue.push({ r: nr, c: nc, dist: 1, cameFrom: entryDirForNeighbor });
+                    visited.add(visitedKey);
                 }
             }
         }
+
         while (queue.length > 0) {
             const { r, c, dist, cameFrom } = queue.shift();
-            if (endStationCells.has(`${r},${c}`)) {
+
+            if (r === endR && c === endC) {
                 return dist;
             }
+
             const currentCell = gridData[r][c];
             const validExits = TRANSITION_MAP[currentCell.caseIndex]?.[cameFrom];
+
             if (!validExits) continue;
+
             for (const exitDir of validExits) {
                 const delta = DIRECTION_DELTA[exitDir];
                 const nr = r + delta.r;
                 const nc = c + delta.c;
+
                 if (nr < 0 || nr >= numRows || nc < 0 || nc >= numCols) continue;
+
                 const nextCameFrom = OPPOSITE_DIRECTION[exitDir];
                 const visitedKey = `${nr},${nc},${nextCameFrom}`;
+
                 if (!visited.has(visitedKey)) {
                     visited.add(visitedKey);
                     queue.push({ r: nr, c: nc, dist: dist + 1, cameFrom: nextCameFrom });
                 }
             }
         }
-        return -1;
+        return -1; // Path not found
     }
 
-    // --- FLATLAND EXPORT HELPERS ---
-    function getStationCoords(stationId) {
-        if (stationId == null) return null;
-        for (let r = 0; r < numRows; r++) {
-            for (let c = 0; c < numCols; c++) {
-                if (gridData[r][c].isStation && gridData[r][c].stationId === stationId) {
-                    return [r, c]; // Return as [row, col]
-                }
-            }
-        }
-        return null; // Station not found
-    }
+    // NEW: Pathfinding function from a specific start cell to ANY of a set of target cells
+    function findShortestPathToAnyTargetCell(startR, startC, targetCellsArray) {
+        const targetCellsSet = new Set(targetCellsArray.map(cell => `${cell.r},${cell.c}`));
 
-    function getDepartureDirection(startStationId, endStationId) {
-        const startStationCells = [];
-        const endStationCells = new Set();
-        for (let r = 0; r < numRows; r++) {
-            for (let c = 0; c < numCols; c++) {
-                if (gridData[r][c].isStation) {
-                    if (gridData[r][c].stationId === startStationId) startStationCells.push({ r, c });
-                    if (gridData[r][c].stationId === endStationId) endStationCells.add(`${r},${c}`);
-                }
-            }
+        if (targetCellsSet.has(`${startR},${startC}`)) {
+            return 0; // Start is already a target
         }
-
-        if (startStationCells.length === 0 || endStationCells.size === 0) return -1; // No path possible
 
         const queue = [];
-        const visited = new Set();
+        const visited = new Set(); 
 
-        // Initial queue setup: find the first step out of the station
-        for (const stationCell of startStationCells) {
-            // Check all 4 directions from the station cell
-            for (const startDir of Object.keys(D)) { // D = {N, E, S, W}
-                const delta = DIRECTION_DELTA[startDir];
-                const nr = stationCell.r + delta.r;
-                const nc = stationCell.c + delta.c;
+        for (const exitDir of Object.values(D)) {
+            const delta = DIRECTION_DELTA[exitDir];
+            const nr = startR + delta.r;
+            const nc = startC + delta.c;
 
-                if (nr < 0 || nr >= numRows || nc < 0 || nc >= numCols) continue;
-                
-                const neighborCell = gridData[nr][nc];
-                if(neighborCell.isStation && neighborCell.stationId === startStationId) continue; // Don't move to another part of the same station
+            if (nr < 0 || nr >= numRows || nc < 0 || nc >= numCols) continue;
 
-                const neighborDef = TILE_DEFINITIONS[neighborCell.caseIndex];
-                const entryDirForNeighbor = OPPOSITE_DIRECTION[startDir];
+            const neighborCell = gridData[nr][nc];
+            const neighborDef = TILE_DEFINITIONS[neighborCell.caseIndex];
+            const entryDirForNeighbor = OPPOSITE_DIRECTION[exitDir];
 
-                // Check if the neighbor track piece connects back to the station
-                if (neighborDef && neighborDef[entryDirForNeighbor]) {
-                    const visitedKey = `${nr},${nc},${entryDirForNeighbor}`;
-                    if (!visited.has(visitedKey)) {
-                        // The `initialDir` is the crucial part we need to preserve
-                        queue.push({ r: nr, c: nc, cameFrom: entryDirForNeighbor, initialDir: startDir });
-                        visited.add(visitedKey);
-                    }
+            if (neighborDef && neighborDef[entryDirForNeighbor]) {
+                const visitedKey = `${nr},${nc},${entryDirForNeighbor}`;
+                if (!visited.has(visitedKey)) {
+                    queue.push({ r: nr, c: nc, dist: 1, cameFrom: entryDirForNeighbor });
+                    visited.add(visitedKey);
                 }
             }
         }
 
         while (queue.length > 0) {
-            const { r, c, cameFrom, initialDir } = queue.shift();
+            const { r, c, dist, cameFrom } = queue.shift();
 
-            // If we've arrived at the destination station, we've found the path and its initial direction
-            if (endStationCells.has(`${r},${c}`)) {
-                return FLATLAND_DIRECTION[initialDir]; // {N:0, E:1, S:2, W:3}
+            if (targetCellsSet.has(`${r},${c}`)) {
+                return dist;
             }
 
             const currentCell = gridData[r][c];
             const validExits = TRANSITION_MAP[currentCell.caseIndex]?.[cameFrom];
+
             if (!validExits) continue;
 
             for (const exitDir of validExits) {
@@ -691,8 +693,7 @@
 
                 if (!visited.has(visitedKey)) {
                     visited.add(visitedKey);
-                    // Pass the `initialDir` along the path
-                    queue.push({ r: nr, c: nc, cameFrom: nextCameFrom, initialDir: initialDir });
+                    queue.push({ r: nr, c: nc, dist: dist + 1, cameFrom: nextCameFrom });
                 }
             }
         }
@@ -700,10 +701,150 @@
     }
 
 
+    // REMOVED: The old findShortestPath function is no longer needed
+    /*
+    function findShortestPath(startStationId, endStationId, specificStartCell = null, specificEndCell = null) {
+        let startPoint = specificStartCell;
+        let endPoint = specificEndCell;
+
+        // If specific start cell is not provided, use default for start station
+        if (!startPoint) {
+            startPoint = getDefaultStationCell(startStationId);
+        }
+
+        // If specific end cell is not provided, use default for end station
+        if (!endPoint) {
+            endPoint = getDefaultStationCell(endStationId);
+        }
+
+        if (!startPoint || !endPoint) {
+            console.warn(`Could not determine precise start/end point for pathfinding between stations ${startStationId} and ${endStationId}.`);
+            return -1; // Cannot find path without valid start/end cells
+        }
+        
+        return findShortestPathBetweenSpecificCells(startPoint.r, startPoint.c, endPoint.r, endPoint.c);
+    }
+    */
+
+    // --- FLATLAND EXPORT HELPERS ---
+    // This function now correctly finds ALL cells belonging to a station
+    function findStationCells(stationId) {
+        const cells = [];
+        if (stationId == null) return cells;
+        for (let r = 0; r < numRows; r++) {
+            for (let c = 0; c < numCols; c++) {
+                if (gridData[r][c].isStation && gridData[r][c].stationId === stationId) {
+                    cells.push({r, c});
+                }
+            }
+        }
+        return cells;
+    }
+
+    // Helper to get the default cell for a station (lowest r, then lowest c)
+    function getDefaultStationCell(stationId) {
+        const cells = findStationCells(stationId);
+        if (cells.length === 0) return null;
+
+        // Find the cell with the lowest row, then lowest column
+        return cells.sort((a, b) => {
+            if (a.r !== b.r) return a.r - b.r;
+            return a.c - b.c;
+        })[0];
+    }
+
+    // Helper to find a departure direction from a SPECIFIC cell to a target station
+    function getDepartureDirectionFromCell(startR, startC, targetStationId) {
+        const targetStationCells = new Set();
+        for (let r = 0; r < numRows; r++) {
+            for (let c = 0; c < numCols; c++) {
+                if (gridData[r][c].isStation && gridData[r][c].stationId === targetStationId) {
+                    targetStationCells.add(`${r},${c}`);
+                }
+            }
+        }
+        if (targetStationCells.size === 0) return null; // Target station not found or empty
+
+        const queue = [];
+        const visited = new Set(); 
+
+        // Initial queue setup: find the first step out of the *specific* station cell (startR, startC)
+        for (const startDir of Object.keys(D)) { 
+            const delta = DIRECTION_DELTA[startDir];
+            const nr = startR + delta.r;
+            const nc = startC + delta.c;
+
+            if (nr < 0 || nr >= numRows || nc < 0 || nc >= numCols) continue;
+
+            const neighborCell = gridData[nr][nc];
+            // Don't immediately move to another part of the *same* starting station in the first step
+            if(neighborCell.isStation && gridData[startR][startC].stationId === neighborCell.stationId) continue;
+
+            const neighborDef = TILE_DEFINITIONS[neighborCell.caseIndex];
+            const entryDirForNeighbor = OPPOSITE_DIRECTION[startDir];
+
+            // Check if the neighbor track piece connects back to the start cell
+            if (neighborDef && neighborDef[entryDirForNeighbor]) {
+                const visitedKey = `${nr},${nc},${entryDirForNeighbor}`;
+                if (!visited.has(visitedKey)) {
+                    queue.push({ r: nr, c: nc, dist: 1, cameFrom: entryDirForNeighbor, initialDir: startDir });
+                    visited.add(visitedKey);
+                }
+            }
+        }
+
+        while (queue.length > 0) {
+            const { r, c, dist, cameFrom, initialDir } = queue.shift();
+
+            // If we've arrived at any cell of the destination station, we've found the path and its initial direction
+            if (targetStationCells.has(`${r},${c}`)) {
+                return FLATLAND_DIRECTION[initialDir]; // {N:0, E:1, S:2, W:3}
+            }
+
+            const currentCell = gridData[r][c];
+            const validExits = TRANSITION_MAP[currentCell.caseIndex]?.[cameFrom];
+
+            if (!validExits) continue;
+
+            for (const exitDir of validExits) {
+                const delta = DIRECTION_DELTA[exitDir];
+                const nr = r + delta.r;
+                const nc = c + delta.c;
+
+                if (nr < 0 || nr >= numRows || nc < 0 || nc >= numCols) continue;
+
+                const nextCameFrom = OPPOSITE_DIRECTION[exitDir];
+                const visitedKey = `${nr},${nc},${nextCameFrom}`;
+
+                if (!visited.has(visitedKey)) {
+                    visited.add(visitedKey);
+                    queue.push({ r: nr, c: nc, dist: dist + 1, cameFrom: nextCameFrom, initialDir: initialDir });
+                }
+            }
+        }
+        return null; // Path not found from this specific start cell to target
+    }
+
+    function getStationCenter(stationId) {
+        const cells = findStationCells(stationId);
+        if (cells.length === 0) return null;
+        let totalR = 0, totalC = 0;
+        cells.forEach(cell => {
+            totalR += cell.r;
+            totalC += cell.c;
+        });
+        const centerR = totalR / cells.length;
+        const centerC = totalC / cells.length;
+        return {
+            x: (centerC + 0.5) * cellSize,
+            y: (centerR + 0.5) * cellSize
+        };
+    }
+
     // --- OPERATIONS MANAGER FUNCTIONS ---
     function showOperationsTab(tabName) {
-        if (isEditingInOpsManager && isSelectingStationsForLine) {
-             alert("Please finish station selection before switching tabs.");
+        if (isEditingInOpsManager && (isSelectingStationsForLine || isSelectingStartCell || isSelectingEndCell)) { 
+             alert("Please finish current selection before switching tabs.");
              return;
         }
         if (isEditingInOpsManager) {
@@ -757,13 +898,16 @@
         if (isSelectingStationsForLine) {
             endStationSelectionMode(true); // true = force cancel
         }
+        if (isSelectingStartCell || isSelectingEndCell) { 
+            endSingleCellSelectionMode(true); // true = force cancel
+        }
         linesManagerPanel.style.display = 'none';
         setOpsManagerEditingMode(false);
     }
     function setOpsManagerEditingMode(isEditing) {
         isEditingInOpsManager = isEditing;
         // The cursor will be managed by the selection mode functions
-        if (!isSelectingStationsForLine) {
+        if (!isSelectingStationsForLine && !isSelectingStartCell && !isSelectingEndCell) { 
             canvas.style.cursor = isEditing ? 'default' : 'crosshair';
         }
     }
@@ -788,6 +932,10 @@
         if (selectedCellCoords) { selectedCellCoords = null; }
         closeLinesManagerButton.style.pointerEvents = 'none';
         
+        // Hide specific cell buttons in this mode
+        undoStationSelectionButton.style.display = 'inline-block';
+        finishStationSelectionButton.textContent = 'Finish Selection';
+
         updateLineBuilderText();
         drawGrid(); 
     }
@@ -808,6 +956,7 @@
         closeLinesManagerButton.style.pointerEvents = 'auto';
         
         drawGrid(); // To remove highlights
+        updateLineEditorCellButtons(); // Update the state of the new buttons
     }
 
     function updateLineBuilderText() {
@@ -838,6 +987,103 @@
         drawGrid();
     }
 
+    // Functions for single cell selection (Start/End Cell)
+    function startSingleCellSelectionMode(targetType) {
+        // Ensure a line is currently being edited
+        if (!lineIdInput.value && !lineNameInput.value) { 
+            alert("Please create or select a line first.");
+            return;
+        }
+
+        const stationIds = lineStationsInput.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && Number.isInteger(n));
+
+        if (targetType === 'start' && stationIds.length === 0) {
+            alert("Please add at least one station to the line before selecting a start cell.");
+            return;
+        }
+        if (targetType === 'end' && stationIds.length < 2) {
+            alert("Please add at least two stations to the line before selecting an end cell.");
+            return;
+        }
+
+        currentCellSelectionTarget = targetType;
+        if (targetType === 'start') {
+            isSelectingStartCell = true;
+            isSelectingEndCell = false;
+            selectionBarInfo.textContent = 'Click on a cell within the first station to select it as the start cell.';
+        } else { // 'end'
+            isSelectingEndCell = true;
+            isSelectingStartCell = false;
+            selectionBarInfo.textContent = 'Click on a cell within the last station to select it as the end cell.';
+        }
+
+        isSelectingStationsForLine = false; // Disable multi-station selection if active
+        setOpsManagerEditingMode(true);
+
+        pageOverlay.style.display = 'block';
+        linesManagerPanel.classList.add('is-selecting'); 
+        canvas.classList.add('is-selecting');            
+        lineSelectionBar.style.display = 'flex';         
+        undoStationSelectionButton.style.display = 'none'; 
+        finishStationSelectionButton.textContent = 'Confirm Cell'; 
+        canvas.style.cursor = 'pointer';
+
+        if (selectedCellCoords) { selectedCellCoords = null; } 
+        closeLinesManagerButton.style.pointerEvents = 'none'; 
+
+        // Determine the target station ID
+        const targetStationId = (targetType === 'start') ? stationIds[0] : stationIds[stationIds.length - 1];
+        const cellsOfTargetStation = findStationCells(targetStationId);
+        
+        // LOGIC FOR AUTO-SELECTION AND AUTO-EXIT:
+        if (cellsOfTargetStation.length === 1) {
+            const autoSelectedCell = cellsOfTargetStation[0];
+            if (targetType === 'start') {
+                lineBuilderData.startCell = { r: autoSelectedCell.r, c: autoSelectedCell.c };
+                updateCellDisplay(lineBuilderData.startCell, startCellDisplay);
+            } else {
+                lineBuilderData.endCell = { r: autoSelectedCell.r, c: autoSelectedCell.c };
+                updateCellDisplay(lineBuilderData.endCell, endCellDisplay);
+            }
+            selectionBarInfo.textContent = `Station #${targetStationId} has only one cell. Auto-selected: (${autoSelectedCell.r}, ${autoSelectedCell.c}).`;
+            // Immediately exit the selection mode as it's auto-selected
+            endSingleCellSelectionMode(false); 
+            return; // Exit function early
+        } else {
+            // If there's no auto-selection, ensure previous selection is cleared in the display for the current mode
+            // and set generic info message if no cell is yet selected
+            if (targetType === 'start') {
+                updateCellDisplay(lineBuilderData.startCell, startCellDisplay);
+            } else {
+                updateCellDisplay(lineBuilderData.endCell, endCellDisplay);
+            }
+            // If no auto-selection, ensure the instruction remains clear
+            selectionBarInfo.textContent = `Click on a cell within Station #${targetStationId} to select it as the ${targetType} cell.`;
+        }
+        
+        drawGrid(); // Redraw to show potential auto-selection highlight and allowed cells
+    }
+
+
+    function endSingleCellSelectionMode(isCancel = false) {
+        currentCellSelectionTarget = null;
+        isSelectingStartCell = false;
+        isSelectingEndCell = false;
+
+        // Reset UI state
+        pageOverlay.style.display = 'none';
+        linesManagerPanel.classList.remove('is-selecting');
+        canvas.classList.remove('is-selecting');
+        lineSelectionBar.style.display = 'none';
+        undoStationSelectionButton.style.display = 'inline-block'; 
+        finishStationSelectionButton.textContent = 'Finish Selection'; 
+        canvas.style.cursor = 'default';
+        closeLinesManagerButton.style.pointerEvents = 'auto';
+
+        drawGrid(); // Redraw to remove highlights
+        updateLineEditorCellButtons(); // Re-evaluate button disabled states
+    }
+    // END: Functions for single cell selection
 
     function renderLinesList() {
         linesListContainer.innerHTML = '';
@@ -850,13 +1096,18 @@
             lineEl.className = 'list-item';
             const disableUp = index === 0;
             const disableDown = index === lines.length - 1;
+            
+            // Add start/end cell info
+            const startCellInfo = line.startCell ? ` Start: (${line.startCell.r},${line.startCell.c})` : '';
+            const endCellInfo = line.endCell ? ` End: (${line.endCell.r},${line.endCell.c})` : '';
+
             lineEl.innerHTML = `
                 <div class="list-item-main-content">
                     <button class="reorder-button" data-action="move-up" data-id="${line.id}" title="Move Up" ${disableUp ? 'disabled' : ''}>▲</button>
                     <button class="reorder-button" data-action="move-down" data-id="${line.id}" title="Move Down" ${disableDown ? 'disabled' : ''}>▼</button>
                     <span class="list-item-name">${line.name}</span> 
                 </div>
-                <span class="list-item-details">${line.stationIds.join(' → ')}</span> 
+                <span class="list-item-details">${line.stationIds.join(' → ')}${startCellInfo}${endCellInfo}</span> 
                 <div class="list-item-actions"> 
                     <button data-action="test" data-id="${line.id}">Path Lengths</button> 
                     <button data-action="edit" data-id="${line.id}">Edit</button> 
@@ -877,7 +1128,17 @@
         
         switch (action) {
             case 'edit': showLineEditor(lines[lineIndex]); break;
-            case 'copy': const newLine = JSON.parse(JSON.stringify(lines[lineIndex])); newLine.id = Date.now(); newLine.name = `${lines[lineIndex].name} (Copy)`; lines.splice(lineIndex + 1, 0, newLine); renderLinesList(); saveState(); break;
+            case 'copy':
+                const newLine = JSON.parse(JSON.stringify(lines[lineIndex]));
+                newLine.id = Date.now();
+                newLine.name = `${lines[lineIndex].name} (Copy)`;
+                // Ensure startCell and endCell are copied
+                newLine.startCell = lines[lineIndex].startCell ? { ...lines[lineIndex].startCell } : null;
+                newLine.endCell = lines[lineIndex].endCell ? { ...lines[lineIndex].endCell } : null;
+                lines.splice(lineIndex + 1, 0, newLine);
+                renderLinesList();
+                saveState();
+                break;
             case 'reverse': lines[lineIndex].stationIds.reverse(); renderLinesList(); saveState(); break;
             case 'delete': if (window.confirm(`Are you sure you want to delete line "${lines[lineIndex].name}"? This will also delete any schedules that use it.`)) { lines.splice(lineIndex, 1); schedules = schedules.filter(s => s.lineId !== id); renderSchedulesList(); renderLinesList(); saveState(); } break;
             case 'test': 
@@ -887,7 +1148,27 @@
                 for (let i = 0; i < line.stationIds.length - 1; i++) {
                     const startStationId = line.stationIds[i];
                     const endStationId = line.stationIds[i + 1];
-                    const distance = findShortestPath(startStationId, endStationId);
+
+                    // Determine segmentStartCell: Use line.startCell if first segment, otherwise default
+                    const segmentStartCell = (i === 0 && line.startCell) ? line.startCell : getDefaultStationCell(startStationId);
+
+                    // Determine segmentEndCells: Use line.endCell if last segment, otherwise all cells of target station
+                    let segmentEndCells;
+                    if (i === line.stationIds.length - 2 && line.endCell) { // Check if this is the last segment
+                        segmentEndCells = [line.endCell];
+                    } else {
+                        segmentEndCells = findStationCells(endStationId);
+                    }
+
+                    let distance;
+                    if (!segmentStartCell || segmentEndCells.length === 0) {
+                        distance = -1; // Cannot find path without valid start/end cells
+                    } else if (segmentEndCells.length === 1) {
+                        distance = findShortestPathBetweenSpecificCells(segmentStartCell.r, segmentStartCell.c, segmentEndCells[0].r, segmentEndCells[0].c);
+                    } else {
+                        distance = findShortestPathToAnyTargetCell(segmentStartCell.r, segmentStartCell.c, segmentEndCells);
+                    }
+                    
                     results.push(distance !== -1 ? `Shortest path from station ${startStationId} to ${endStationId} is ${distance} cells.` : `Path from station ${startStationId} to ${endStationId}: Not found.`);
                 }
                 alert(results.join('\n'));
@@ -902,36 +1183,83 @@
     }
     function showLinesListView() { 
         if(isSelectingStationsForLine) { endStationSelectionMode(true); } // Cancel on switch
+        if(isSelectingStartCell || isSelectingEndCell) { endSingleCellSelectionMode(true); } // Cancel single cell selection
         lineEditor.style.display = 'none'; 
         linesListView.style.display = 'block'; 
         setOpsManagerEditingMode(false); 
     }
+
+    // helper function to update the text display for cells
+    function updateCellDisplay(cellCoords, displayElement) {
+        if (cellCoords && cellCoords.r !== undefined && cellCoords.c !== undefined) {
+            displayElement.textContent = `(${cellCoords.r}, ${cellCoords.c})`;
+        } else {
+            displayElement.textContent = '(Not selected)';
+        }
+    }
+
+    // function to enable/disable the new cell selection buttons
+    function updateLineEditorCellButtons() {
+        const stationIds = lineStationsInput.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && Number.isInteger(n));
+        selectStartCellButton.disabled = stationIds.length === 0;
+        selectEndCellButton.disabled = stationIds.length < 2; // End cell only makes sense if there are at least two stations
+    }
+
     function showLineEditor(line = null) { 
         linesListView.style.display = 'none'; 
         lineEditor.style.display = 'block'; 
         setOpsManagerEditingMode(true); 
+
+        // IMPORTANT: Reset lineBuilderData for the new/edited line
+        lineBuilderData.stations = [];
+        lineBuilderData.originalStations = '';
+        lineBuilderData.startCell = null;
+        lineBuilderData.endCell = null;
+
         if (line) { 
             lineEditorTitle.textContent = 'Edit Line'; 
             lineIdInput.value = line.id; 
             lineNameInput.value = line.name; 
             lineStationsInput.value = line.stationIds.join(', '); 
+            
+            // Populate lineBuilderData with the current line's data
+            lineBuilderData.stations = [...line.stationIds]; // Deep copy array to prevent accidental modification of original line.stationIds
+            lineBuilderData.originalStations = line.stationIds.join(', '); 
+            lineBuilderData.startCell = line.startCell ? { ...line.startCell } : null; // Deep copy cell object
+            lineBuilderData.endCell = line.endCell ? { ...line.endCell } : null; // Deep copy cell object
+
+            updateCellDisplay(lineBuilderData.startCell, startCellDisplay);
+            updateCellDisplay(lineBuilderData.endCell, endCellDisplay);
         } else { 
             lineEditorTitle.textContent = 'Create New Line'; 
             lineIdInput.value = ''; 
             lineNameInput.value = ''; 
             lineStationsInput.value = ''; 
+            // lineBuilderData already reset above for new lines, displays already updated to '(Not selected)' by previous calls.
         } 
+        updateLineEditorCellButtons(); 
     }
     function saveLine() { 
         if(isSelectingStationsForLine) { endStationSelectionMode(); }
+        if (isSelectingStartCell || isSelectingEndCell) { endSingleCellSelectionMode(true); } 
+
         const id = lineIdInput.value ? parseInt(lineIdInput.value) : null; 
         const name = lineNameInput.value.trim() || 'Untitled Line'; 
         const stationIds = lineStationsInput.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && Number.isInteger(n)); 
+        
+        const newLineData = {
+            id: id || Date.now(),
+            name,
+            stationIds,
+            startCell: lineBuilderData.startCell, 
+            endCell: lineBuilderData.endCell      
+        };
+
         if (id) { 
-            const line = lines.find(l => l.id === id); 
-            if (line) { line.name = name; line.stationIds = stationIds; } 
+            const lineIndex = lines.findIndex(l => l.id === id); 
+            if (lineIndex !== -1) { lines[lineIndex] = newLineData; } 
         } else { 
-            lines.push({ id: Date.now(), name, stationIds }); 
+            lines.push(newLineData); 
         } 
         renderLinesList(); 
         showLinesListView(); 
@@ -1011,6 +1339,7 @@
             scheduleLineSelect.value = schedule.lineId;
             scheduleTrainClassSelect.value = schedule.trainClassId;
             scheduleTravelFactorInput.value = schedule.travelFactor || 1.1;
+            scheduleDwellTimeInput.value = schedule.dwellTime ?? 2; // NEW: Populate dwell time from schedule, default to 2
         } else {
             scheduleEditorTitle.textContent = 'Create New Schedule';
             scheduleIdInput.value = '';
@@ -1018,6 +1347,7 @@
             scheduleLineSelect.value = lines[0]?.id || '';
             scheduleTrainClassSelect.value = trainClasses[0]?.id || '';
             scheduleTravelFactorInput.value = 1.1;
+            scheduleDwellTimeInput.value = 2; // NEW: Default dwell time for new schedules
         }
         populateScheduleStopsTable(schedule);
     }
@@ -1026,18 +1356,80 @@
         const selectedLineId = parseInt(scheduleLineSelect.value);
         const line = lines.find(l => l.id === selectedLineId);
         if (!line || !line.stationIds || line.stationIds.length === 0) {
-            scheduleStopsTableBody.innerHTML = '<tr><td colspan="9">Please select a valid line with stations.</td></tr>';
+            scheduleStopsTableBody.innerHTML = '<tr><td colspan="8">Please select a valid line with stations.</td></tr>'; // Reduced colspan
             validateScheduleInputs();
             return;
         }
+
+        const selectedTrainClassId = parseInt(scheduleTrainClassSelect.value);
+        const train = trainClasses.find(t => t.id === selectedTrainClassId);
+        const travelFactor = parseFloat(scheduleTravelFactorInput.value);
+        const dwellTime = parseFloat(scheduleDwellTimeInput.value); // NEW: Get dwell time from input
+
+        if (!train || isNaN(travelFactor) || isNaN(dwellTime)) {
+            scheduleStopsTableBody.innerHTML = '<tr><td colspan="8">Invalid train class, travel factor, or dwell time.</td></tr>';
+            validateScheduleInputs();
+            return;
+        }
+
+        let tempDepartureTimeOfPreviousStop = 0; // Temporary variable for pre-filling calculation
+
         line.stationIds.forEach((stationId, index) => {
             const stopData = schedule?.stops?.[index] || {};
             const tr = document.createElement('tr');
             tr.dataset.stationId = stationId;
             
-            const latestArrivalVal = stopData.latestArrival ?? '';
-            const earliestDepartureVal = stopData.earliestDeparture ?? (index === 0 ? 0 : '');
-            const dwellTimeVal = stopData.dwellTime ?? ''; 
+            let currentCalculatedArrivalTime = 0;
+            let currentCalculatedDepartureTime = 0; // This will be Math.ceil(arrival) + dwell
+
+            // Calculate temporary arrival and natural departure for pre-filling inputs
+            if (index === 0) {
+                currentCalculatedArrivalTime = 0; 
+                currentCalculatedNaturalDepartureTime = 0; // First stop departure is 0, no dwell time added here
+            } else {
+                const prevStationId = parseInt(line.stationIds[index - 1]);
+                const segmentStartCell = (index === 1 && line.startCell) ? line.startCell : getDefaultStationCell(prevStationId);
+                let segmentEndCells;
+                if (index === line.stationIds.length - 1 && line.endCell) {
+                    segmentEndCells = [line.endCell];
+                } else {
+                    segmentEndCells = findStationCells(stationId);
+                }
+
+                let distance = -1;
+                if (segmentStartCell && segmentEndCells.length > 0) {
+                    if (segmentEndCells.length === 1) {
+                        distance = findShortestPathBetweenSpecificCells(segmentStartCell.r, segmentStartCell.c, segmentEndCells[0].r, segmentEndCells[0].c);
+                    } else {
+                        distance = findShortestPathToAnyTargetCell(segmentStartCell.r, segmentStartCell.c, segmentEndCells);
+                    }
+                }
+
+                if (distance !== -1) {
+                    const travelTime = (distance / train.speed) * travelFactor;
+                    currentCalculatedArrivalTime = tempDepartureTimeOfPreviousStop + travelTime;
+                    currentCalculatedNaturalDepartureTime = currentCalculatedArrivalTime + dwellTime; // Add dwell time for subsequent stops
+                } else {
+                    currentCalculatedArrivalTime = Infinity;
+                    currentCalculatedNaturalDepartureTime = Infinity;
+                }
+            }
+
+
+            // Determine initial values for input fields
+            const latestArrivalVal = (index === 0) ? '' : (stopData.latestArrival ?? (currentCalculatedArrivalTime !== Infinity ? Math.ceil(currentCalculatedArrivalTime) : ''));
+            let earliestDepartureVal;
+            if (index === 0) {
+                 earliestDepartureVal = stopData.earliestDeparture ?? 0; // Default first stop departure to 0
+            } else {
+                 earliestDepartureVal = stopData.earliestDeparture ?? (currentCalculatedNaturalDepartureTime !== Infinity ? Math.ceil(currentCalculatedNaturalDepartureTime) : '');
+            }
+            
+            // For the next iteration, the departure time from the *current* stop is the effective earliestDeparture.
+            // If earliestDepartureVal is empty string or null, use the natural departure time.
+            tempDepartureTimeOfPreviousStop = (earliestDepartureVal !== '' && earliestDepartureVal !== null) ? parseFloat(earliestDepartureVal) : (currentCalculatedNaturalDepartureTime !== Infinity ? currentCalculatedNaturalDepartureTime : Infinity);
+            if (isNaN(tempDepartureTimeOfPreviousStop)) tempDepartureTimeOfPreviousStop = Infinity; // Handle cases where it's still invalid```
+
 
             tr.innerHTML = `
                 <td>${index + 1}</td>
@@ -1048,11 +1440,9 @@
                 <td class="calculated-value departure-time-cell">-</td>
                 <td><input type="number" class="latest-arrival-input" value="${latestArrivalVal}" min="0"></td>
                 <td><input type="number" class="earliest-departure-input" value="${earliestDepartureVal}" min="0"></td>
-                <td><input type="number" class="dwell-time-input" value="${dwellTimeVal}" min="0"></td>
             `;
             const latestArrivalInput = tr.querySelector('.latest-arrival-input');
             const earliestDepartureInput = tr.querySelector('.earliest-departure-input');
-            const dwellTimeInput = tr.querySelector('.dwell-time-input');
 
             if (index === 0) {
                 latestArrivalInput.disabled = true;
@@ -1061,8 +1451,6 @@
             if(index === line.stationIds.length - 1) {
                 earliestDepartureInput.disabled = true;
                 earliestDepartureInput.placeholder = 'N/A';
-                dwellTimeInput.disabled = true;
-                dwellTimeInput.placeholder = 'N/A';
             }
 
             const inputs = tr.querySelectorAll('input');
@@ -1075,9 +1463,19 @@
         const selectedTrainClassId = parseInt(scheduleTrainClassSelect.value);
         const train = trainClasses.find(t => t.id === selectedTrainClassId);
         const travelFactor = parseFloat(scheduleTravelFactorInput.value);
-        if(!train || isNaN(travelFactor)) return;
-        let departureTimeOfPreviousStop = 0;
+        const dwellTime = parseFloat(scheduleDwellTimeInput.value); 
+
+        if(!train || isNaN(travelFactor) || isNaN(dwellTime)) return; 
+
+        let currentDepartureForNextStop = 0; // This is the departure time that affects the *next* stop's arrival.
         const rows = scheduleStopsTableBody.querySelectorAll('tr');
+
+        const selectedLineId = parseInt(scheduleLineSelect.value);
+        const line = lines.find(l => l.id === selectedLineId);
+        if (!line || !line.stationIds || line.stationIds.length === 0) {
+            return;
+        }
+
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
             const distanceCell = row.querySelector('.distance-value');
@@ -1086,43 +1484,75 @@
             const departureTimeCell = row.querySelector('.departure-time-cell');
             const latestArrivalInput = row.querySelector('.latest-arrival-input');
             const earliestDepartureInput = row.querySelector('.earliest-departure-input');
-            const dwellTimeInput = row.querySelector('.dwell-time-input');
-            let arrivalTime = 0;
+            
+            let currentArrivalTime;
+            let currentNaturalDeparture; // arrival + dwell (or 0 for first stop)
+            let currentActualDeparture; // clamped by earliestDepartureInput
+
             if (i === 0) {
-                arrivalTime = parseInt(earliestDepartureInput.value) || 0;
+                currentArrivalTime = 0; 
                 distanceCell.textContent = '-';
                 travelTimeCell.textContent = '-';
+                currentNaturalDeparture = 0; // Departure at first stop is 0, no dwell time
+                
             } else {
                 const prevStationId = parseInt(rows[i-1].dataset.stationId);
                 const currentStationId = parseInt(row.dataset.stationId);
-                const distance = findShortestPath(prevStationId, currentStationId);
+
+                const segmentStartCell = (i === 1 && line.startCell) ? line.startCell : getDefaultStationCell(prevStationId);
+                let segmentEndCells;
+                if (i === line.stationIds.length - 1 && line.endCell) {
+                    segmentEndCells = [line.endCell];
+                } else {
+                    segmentEndCells = findStationCells(currentStationId);
+                }
+
+                let distance;
+                if (!segmentStartCell || segmentEndCells.length === 0) {
+                    distance = -1;
+                } else if (segmentEndCells.length === 1) {
+                    distance = findShortestPathBetweenSpecificCells(segmentStartCell.r, segmentStartCell.c, segmentEndCells[0].r, segmentEndCells[0].c);
+                } else {
+                    // FIX: Changed 'startCell.c' to 'segmentStartCell.c'
+                    distance = findShortestPathToAnyTargetCell(segmentStartCell.r, segmentStartCell.c, segmentEndCells); 
+                }
+                
                 if (distance === -1) {
                     distanceCell.textContent = 'X'; travelTimeCell.textContent = 'N/A'; arrivalTimeCell.textContent = 'N/A'; departureTimeCell.textContent = 'N/A';
                     row.style.backgroundColor = '#fee';
-                    departureTimeOfPreviousStop = Infinity; 
+                    currentDepartureForNextStop = Infinity; // Path broken
                     continue;
                 }
                 row.style.backgroundColor = '';
                 distanceCell.textContent = distance;
                 const travelTime = (distance / train.speed) * travelFactor;
-                travelTimeCell.textContent = travelTime.toFixed(1);
-                arrivalTime = departureTimeOfPreviousStop + travelTime;
+                currentArrivalTime = currentDepartureForNextStop + travelTime;
+                currentNaturalDeparture = currentArrivalTime + dwellTime;
             }
-            arrivalTimeCell.textContent = arrivalTime.toFixed(1);
-            const latestArrival = latestArrivalInput.value === '' ? null : parseInt(latestArrivalInput.value);
-            arrivalTimeCell.classList.toggle('exceeded-constraint', latestArrival !== null && arrivalTime > latestArrival);
-            const dwellTime = parseInt(dwellTimeInput.value) || 0; 
-            const naturalDeparture = arrivalTime + dwellTime;
-            const earliestDepartureVal = earliestDepartureInput.value === '' ? null : parseInt(earliestDepartureInput.value);
-            if (i === rows.length - 1) {
+
+            // Update visible arrival time and check latestArrival constraint
+            arrivalTimeCell.textContent = currentArrivalTime.toFixed(1);
+            arrivalTimeCell.classList.toggle('exceeded-constraint', false); 
+            const latestArrival = latestArrivalInput.value === '' ? null : parseFloat(latestArrivalInput.value);
+            if (latestArrival !== null && currentArrivalTime > latestArrival) {
+                arrivalTimeCell.classList.add('exceeded-constraint');
+            }
+            
+            // Calculate and display departure time for all stops, and update currentDepartureForNextStop
+            if (i === rows.length - 1) { // Last stop
                 departureTimeCell.textContent = "-";
-                departureTimeOfPreviousStop = Infinity;
+                currentActualDeparture = Infinity; // No departure from last stop affects next
             } else {
-                 const actualDeparture = Math.max(naturalDeparture, earliestDepartureVal || 0);
-                 departureTimeCell.textContent = actualDeparture.toFixed(1);
-                 departureTimeCell.classList.toggle('exceeded-constraint', earliestDepartureVal !== null && actualDeparture > earliestDepartureVal);
-                 departureTimeOfPreviousStop = actualDeparture;
+                 const earliestDepartureVal = earliestDepartureInput.value === '' ? null : parseFloat(earliestDepartureInput.value);
+                 currentActualDeparture = Math.max(currentNaturalDeparture, earliestDepartureVal ?? 0);
+                 departureTimeCell.textContent = currentActualDeparture.toFixed(1);
+                 departureTimeCell.classList.toggle('exceeded-constraint', false); 
+                 if (earliestDepartureVal !== null && currentActualDeparture < earliestDepartureVal) { // Actual departure is earlier than required
+                    departureTimeCell.classList.add('exceeded-constraint');
+                 }
             }
+            // IMPORTANT: This updates the departure time for the *next* segment's arrival calculation
+            currentDepartureForNextStop = currentActualDeparture;
         }
         validateScheduleInputs();
     }
@@ -1133,10 +1563,10 @@
             const latestArrivalInput = row.querySelector('.latest-arrival-input');
             const earliestDepartureInput = row.querySelector('.earliest-departure-input');
             if (!latestArrivalInput.disabled && latestArrivalInput.value !== '') {
-                latestArrivalInput.value = Math.max(0, parseInt(latestArrivalInput.value) + shiftValue);
+                latestArrivalInput.value = Math.max(0, parseFloat(latestArrivalInput.value) + shiftValue);
             }
             if (!earliestDepartureInput.disabled && earliestDepartureInput.value !== '') {
-                 earliestDepartureInput.value = Math.max(0, parseInt(earliestDepartureInput.value) + shiftValue);
+                 earliestDepartureInput.value = Math.max(0, parseFloat(earliestDepartureInput.value) + shiftValue);
             }
         });
         recalculateFullTimetable();
@@ -1147,7 +1577,7 @@
 
         rows.forEach((row, index) => {
             const latestArrivalInput = row.querySelector('.latest-arrival-input');
-            const earliestDepartureInput = row.querySelector('.earliest-departure-input');
+            const earliestDepartureInput = row.querySelector('.earliest-departure-input'); 
 
             // Rule: Not the first stop? Then Latest Arrival is required.
             if (index > 0) {
@@ -1185,28 +1615,35 @@
         const lineId = parseInt(scheduleLineSelect.value);
         const trainClassId = parseInt(scheduleTrainClassSelect.value);
         const travelFactor = parseFloat(scheduleTravelFactorInput.value);
+        const dwellTime = parseFloat(scheduleDwellTimeInput.value); // NEW: Get dwell time
         if (isNaN(lineId)) { alert("A valid line must be selected."); return; }
+        
+        // NEW: Validate dwellTime
+        if (isNaN(dwellTime) || dwellTime < 0) {
+            alert("Dwell Time must be a non-negative number.");
+            return;
+        }
+
         const stops = [];
         scheduleStopsTableBody.querySelectorAll('tr').forEach(tr => {
             const stationId = parseInt(tr.dataset.stationId);
             if (isNaN(stationId)) return;
 
-            const dwellInput = tr.querySelector('.dwell-time-input');
             const earliestDepartureInput = tr.querySelector('.earliest-departure-input');
             const latestArrivalInput = tr.querySelector('.latest-arrival-input');
 
-            const dwellTime = dwellInput.value === '' ? null : parseInt(dwellInput.value, 10);
-            const earliestDeparture = earliestDepartureInput.value === '' ? null : parseInt(earliestDepartureInput.value, 10);
-            const latestArrival = latestArrivalInput.value === '' ? null : parseInt(latestArrivalInput.value, 10);
+            // Use parseFloat for consistency with timing calculations
+            const earliestDeparture = earliestDepartureInput.value === '' ? null : parseFloat(earliestDepartureInput.value);
+            const latestArrival = latestArrivalInput.value === '' ? null : parseFloat(latestArrivalInput.value);
             
             stops.push({
                 stationId,
-                dwellTime: isNaN(dwellTime) ? null : dwellTime,
                 earliestDeparture: isNaN(earliestDeparture) ? null : earliestDeparture,
                 latestArrival: isNaN(latestArrival) ? null : latestArrival
             });
         });
-        const scheduleData = { id, name, lineId, trainClassId, travelFactor, stops };
+        // NEW: Add dwellTime to scheduleData
+        const scheduleData = { id, name, lineId, trainClassId, travelFactor, dwellTime, stops };
         const existingIndex = schedules.findIndex(s => s.id === id);
         if (existingIndex > -1) { schedules[existingIndex] = scheduleData; } else { schedules.push(scheduleData); }
         renderSchedulesList();
@@ -1312,40 +1749,50 @@
     // --- Core Application Functions ---
     function createEmptyCell() { return { N: false, E: false, S: false, W: false, caseIndex: CI.EMPTY, isInvalid: false, isOverpass: false, isStation: false, stationId: null }; }
     function setupDimensions() { numRows = parseInt(document.getElementById('rows').value); numCols = parseInt(document.getElementById('cols').value); cellSize = parseInt(document.getElementById('cellSize').value); canvas.width = numCols * cellSize; canvas.height = numRows * cellSize; }
-    function initializeOrResizeGrid(clearOnly = false) { const oldGridData = gridData; const oldNumRows = numRows; const oldNumCols = numCols; setupDimensions(); const newGrid = Array(numRows).fill(null).map(() => Array(numCols).fill(null).map(() => createEmptyCell())); if (!clearOnly && oldGridData && oldGridData.length > 0 && (numRows !== oldNumRows || numCols !== oldNumCols || !gridDataIsEmpty(oldGridData))) { const rowOffset = Math.max(0, Math.floor((numRows - oldNumRows) / 2)); const colOffset = Math.max(0, Math.floor((numCols - oldNumCols) / 2)); for (let r_old = 0; r_old < oldNumRows; r_old++) { for (let c_old = 0; c_old < oldNumCols; c_old++) { const newR = r_old + rowOffset; const newC = c_old + colOffset; if (newR >= 0 && newR < numRows && newC >= 0 && newC < numCols && oldGridData[r_old] && oldGridData[r_old][c_old]) { newGrid[newR][newC] = JSON.parse(JSON.stringify(oldGridData[r_old][c_old])); } } } gridData = newGrid; } else { gridData = newGrid; } if (clearOnly) { nextStationId = 1; lines = []; schedules = []; } selectedCellCoords = null; updateSelectionUI(); validateGrid(); drawGrid(); exportAllDataToTextAreas(); historyStack = []; historyIndex = -1; saveState(); }
+    function initializeOrResizeGrid(clearOnly = false) { 
+        const oldGridData = gridData; 
+        const oldNumRows = numRows; 
+        const oldNumCols = numCols; 
+        setupDimensions(); 
+        const newGrid = Array(numRows).fill(null).map(() => Array(numCols).fill(null).map(() => createEmptyCell())); 
+        if (!clearOnly && oldGridData && oldGridData.length > 0 && (numRows !== oldNumRows || numCols !== oldNumCols || !gridDataIsEmpty(oldGridData))) { 
+            const rowOffset = Math.max(0, Math.floor((numRows - oldNumRows) / 2)); 
+            const colOffset = Math.max(0, Math.floor((numCols - oldNumCols) / 2)); 
+            for (let r_old = 0; r_old < oldNumRows; r_old++) { 
+                for (let c_old = 0; c_old < oldNumCols; c_old++) { 
+                    const newR = r_old + rowOffset; 
+                    const newC = c_old + colOffset; 
+                    if (newR >= 0 && newR < numRows && newC >= 0 && newC < numCols && oldGridData[r_old] && oldGridData[r_old][c_old]) { 
+                        newGrid[newR][newC] = JSON.parse(JSON.stringify(oldGridData[r_old][c_old])); 
+                    } 
+                } 
+            } 
+            gridData = newGrid; 
+        } else { 
+            gridData = newGrid; 
+        } 
+        if (clearOnly) { 
+            nextStationId = 1; 
+            lines = []; 
+            schedules = []; 
+            // Clear lineBuilderData as well when clearing grid
+            lineBuilderData = { stations: [], originalStations: '', startCell: null, endCell: null }; 
+        } 
+        selectedCellCoords = null; 
+        updateSelectionUI(); 
+        validateGrid(); 
+        drawGrid(); 
+        exportAllDataToTextAreas(); 
+        historyStack = []; 
+        historyIndex = -1; 
+        saveState(); 
+    }
     function gridDataIsEmpty(data) { if (!data || data.length === 0) return true; for (let r = 0; r < data.length; r++) { for (let c = 0; c < data[0].length; c++) { const cell = data[r][c]; if (cell.caseIndex !== CI.EMPTY || cell.N || cell.E || cell.S || cell.W || cell.isOverpass || cell.isStation) return false; } } return true; }
     function getExpectedConnections(caseIndex) { const definition = TILE_DEFINITIONS[caseIndex]; if (!definition) { console.warn(`No TILE_DEFINITION for caseIndex: ${caseIndex}`); return TILE_DEFINITIONS[CI.EMPTY]; } return { ...definition }; }
-    function validateGrid() { if (!gridData || gridData.length === 0) return; for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { gridData[r][c].isInvalid = false; } } for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { const cell = gridData[r][c]; const expected = getExpectedConnections(cell.caseIndex); if (cell.caseIndex !== CI.EMPTY) { if (cell.N !== expected.N || cell.E !== expected.E || cell.S !== expected.S || cell.W !== expected.W) cell.isInvalid = true; } else { if (cell.N || cell.E || cell.S || cell.W) cell.isInvalid = true; } if (cell.N && (r === 0 || !gridData[r-1][c].S)) cell.isInvalid = true; if (r > 0 && gridData[r-1][c].S && !cell.N) { gridData[r][c].isInvalid = true; if(gridData[r-1][c].caseIndex !== CI.EMPTY) gridData[r-1][c].isInvalid = true;} if (cell.E && (c === numCols - 1 || !gridData[r][c+1].W)) cell.isInvalid = true; if (c < numCols - 1 && gridData[r][c+1].W && !cell.E) { gridData[r][c].isInvalid = true; if(gridData[r][c+1].caseIndex !== CI.EMPTY) gridData[r][c+1].isInvalid = true;} if (cell.S && (r === numRows - 1 || !gridData[r+1][c].N)) cell.isInvalid = true; if (r < numRows - 1 && gridData[r+1][c].N && !cell.S) { gridData[r][c].isInvalid = true; if(gridData[r+1][c].caseIndex !== CI.EMPTY) gridData[r+1][c].isInvalid = true;} if (cell.W && (c === 0 || !gridData[r][c-1].E)) cell.isInvalid = true; if (c > 0 && gridData[r][c-1].E && !cell.W) { gridData[r][c].isInvalid = true; if(gridData[r-1][c].caseIndex !== CI.EMPTY) gridData[r-1][c].isInvalid = true;}  if (cell.isStation && !(cell.caseIndex === CI.V_STRAIGHT || cell.caseIndex === CI.H_STRAIGHT) ) { cell.isStation = false; cell.stationId = null; cell.isInvalid = true; } if (cell.isOverpass && cell.caseIndex !== CI.DIAMOND_X) { cell.isOverpass = false; cell.isInvalid = true; } } } }
+    function validateGrid() { if (!gridData || gridData.length === 0) return; for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { gridData[r][c].isInvalid = false; } } for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { const cell = gridData[r][c]; const expected = getExpectedConnections(cell.caseIndex); if (cell.caseIndex !== CI.EMPTY) { if (cell.N !== expected.N || cell.E !== expected.E || cell.S !== expected.S || cell.W !== expected.W) cell.isInvalid = true; } else { if (cell.N || cell.E || cell.S || cell.W) cell.isInvalid = true; } if (cell.N && (r === 0 || !gridData[r-1][c].S)) cell.isInvalid = true; if (r > 0 && gridData[r-1][c].S && !cell.N) { gridData[r][c].isInvalid = true; if(gridData[r-1][c].caseIndex !== CI.EMPTY) gridData[r-1][c].isInvalid = true;} if (cell.E && (c === numCols - 1 || !gridData[r][c+1].W)) cell.isInvalid = true; if (c < numCols - 1 && gridData[r][c+1].W && !cell.E) { gridData[r][c].isInvalid = true; if(gridData[r][c+1].caseIndex !== CI.EMPTY) gridData[r][c+1].isInvalid = true;} if (cell.S && (r === numRows - 1 || !gridData[r+1][c].N)) cell.isInvalid = true; if (r < numRows - 1 && gridData[r+1][c].N && !cell.S) { gridData[r][c].isInvalid = true; if(gridData[r+1][c].caseIndex !== CI.EMPTY) gridData[r+1][c].isInvalid = true;} if (cell.W && (c === 0 || !gridData[r][c-1].E)) cell.isInvalid = true; if (c > 0 && gridData[r][c-1].E && !cell.W) { gridData[r][c].isInvalid = true; if(gridData[r][c-1].caseIndex !== CI.EMPTY) gridData[r][c-1].isInvalid = true;}  if (cell.isStation && !(cell.caseIndex === CI.V_STRAIGHT || cell.caseIndex === CI.H_STRAIGHT) ) { cell.isStation = false; cell.stationId = null; cell.isInvalid = true; } if (cell.isOverpass && cell.caseIndex !== CI.DIAMOND_X) { cell.isOverpass = false; cell.isInvalid = true; } } } }
     function mapConnectionsToCaseIndexAndRotation(N,E,S,W){const mask=(N?8:0)+(E?4:0)+(S?2:0)+(W?1:0);let i=CI.EMPTY;switch(mask){case 1:i=CI.DEAD_W;break;case 2:i=CI.DEAD_S;break;case 3:i=CI.TURN_S_W;break;case 4:i=CI.DEAD_E;break;case 5:i=CI.H_STRAIGHT;break;case 6:i=CI.TURN_S_E;break;case 7:i=CI.S_W_R;break;case 8:i=CI.DEAD_N;break;case 9:i=CI.TURN_N_W;break;case 10:i=CI.V_STRAIGHT;break;case 11:i=CI.S_N_R;break;case 12:i=CI.TURN_N_E;break;case 13:i=CI.S_E_R;break;case 14:i=CI.S_S_R;break;case 15:i=CI.DIAMOND_X}return{caseIndex:i}}
     
-    function findStationCells(stationId) {
-        const cells = [];
-        if (stationId == null) return cells;
-        for (let r = 0; r < numRows; r++) {
-            for (let c = 0; c < numCols; c++) {
-                if (gridData[r][c].isStation && gridData[r][c].stationId === stationId) {
-                    cells.push({r, c});
-                }
-            }
-        }
-        return cells;
-    }
-
-    function getStationCenter(stationId) {
-        const cells = findStationCells(stationId);
-        if (cells.length === 0) return null;
-        let totalR = 0, totalC = 0;
-        cells.forEach(cell => {
-            totalR += cell.r;
-            totalC += cell.c;
-        });
-        const centerR = totalR / cells.length;
-        const centerC = totalC / cells.length;
-        return {
-            x: (centerC + 0.5) * cellSize,
-            y: (centerR + 0.5) * cellSize
-        };
-    }
+    // findStationCells is now defined above in the FLATLAND EXPORT HELPERS section
 
     function drawGrid() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1368,7 +1815,43 @@
             if (selectedCellCoords && selectedCellCoords.r === r && selectedCellCoords.c === c) { ctx.strokeStyle = '#007bff'; ctx.lineWidth = 2.5; ctx.strokeRect(x + 1.5, y + 1.5, cellSize - 3, cellSize - 3); }
         }}
 
-        // Draw selection highlights and lines if in selection mode
+        // Highlight allowed cells when in single cell selection mode
+        if (isSelectingStartCell || isSelectingEndCell) {
+            const stationIds = lineStationsInput.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && Number.isInteger(n));
+            let targetStationId = null;
+
+            if (isSelectingStartCell && stationIds.length > 0) {
+                targetStationId = stationIds[0];
+            } else if (isSelectingEndCell && stationIds.length > 1) { // Needs at least 2 stations for an end cell
+                targetStationId = stationIds[stationIds.length - 1];
+            }
+
+            if (targetStationId !== null) {
+                const allowedCells = findStationCells(targetStationId);
+                allowedCells.forEach(cellCoords => {
+                    ctx.fillStyle = 'rgba(144, 238, 144, 0.4)'; // Light green highlight for allowed cells
+                    ctx.fillRect(cellCoords.c * cellSize, cellCoords.r * cellSize, cellSize, cellSize);
+                });
+            }
+
+            // Also draw the *currently selected* start/end cell (if any) on top of the allowed highlight
+            let currentSelectedCell = null;
+            if (isSelectingStartCell && lineBuilderData.startCell) {
+                currentSelectedCell = lineBuilderData.startCell;
+            } else if (isSelectingEndCell && lineBuilderData.endCell) {
+                currentSelectedCell = lineBuilderData.endCell;
+            }
+
+            if (currentSelectedCell) {
+                ctx.fillStyle = 'rgba(0, 150, 255, 0.6)'; // A distinct highlight color for the *chosen* cell
+                ctx.fillRect(currentSelectedCell.c * cellSize, currentSelectedCell.r * cellSize, cellSize, cellSize);
+                ctx.strokeStyle = '#003366';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(currentSelectedCell.c * cellSize + 1.5, currentSelectedCell.r * cellSize + 1.5, cellSize - 3, cellSize - 3);
+            }
+        }
+
+        // Draw selection highlights and lines if in station selection mode
         if (isSelectingStationsForLine) {
             const stationPositions = [];
             // Highlight all cells for each selected station
@@ -1422,16 +1905,35 @@
             if (isPrimary) { targetCtx.fillStyle = STATION_PLATFORM_COLOR; const platformWidth = s * 0.25; const platformLength = s * 0.8; const platformMargin = s * 0.05; const trackHalfWidth = trackWidth / 2; targetCtx.save(); targetCtx.translate(half, half); if (caseIndex === CI.H_STRAIGHT) targetCtx.rotate(Math.PI / 2); targetCtx.fillRect(trackHalfWidth + platformMargin, -platformLength / 2, platformWidth, platformLength); targetCtx.restore(); }
         }
         targetCtx.strokeStyle = '#2c3e50'; targetCtx.lineWidth = trackWidth; targetCtx.lineCap = 'round';
-        switch (caseIndex) { case CI.EMPTY: break; case CI.V_STRAIGHT: targetCtx.beginPath(); targetCtx.moveTo(half, 0); targetCtx.lineTo(half, s); targetCtx.stroke(); break; case CI.H_STRAIGHT: targetCtx.beginPath(); targetCtx.moveTo(0, half); targetCtx.lineTo(s, half); targetCtx.stroke(); break; case CI.DEAD_N: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half-s*0.15,half);targetCtx.lineTo(half+s*0.15,half);targetCtx.stroke();break; case CI.DEAD_E: targetCtx.beginPath();targetCtx.moveTo(s,half);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half,half-s*0.15);targetCtx.lineTo(half,half+s*0.15);targetCtx.stroke();break; case CI.DEAD_S: targetCtx.beginPath();targetCtx.moveTo(half,s);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half-s*0.15,half);targetCtx.lineTo(half+s*0.15,half);targetCtx.stroke();break; case CI.DEAD_W: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half,half-s*0.15);targetCtx.lineTo(half,half+s*0.15);targetCtx.stroke();break; case CI.TURN_N_E: targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();break; case CI.TURN_S_E: targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.TURN_S_W: targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.TURN_N_W: targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.DIAMOND_X: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();if(isOverpass&&size>10){const gap=s*0.15;targetCtx.moveTo(0,half);targetCtx.lineTo(half-gap,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(half+gap,half);targetCtx.lineTo(s,half);targetCtx.stroke();}else{targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();}break; case CI.S_N_L: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();break; case CI.S_E_L: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.S_S_L: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.S_W_L: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.S_N_R: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0,0.5*Math.PI,false);targetCtx.stroke();break; case CI.S_E_R: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,0.5*Math.PI,Math.PI,false);targetCtx.stroke();break; case CI.S_S_R: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,Math.PI,1.5*Math.PI,false);targetCtx.stroke();break; case CI.S_W_R: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,1.5*Math.PI,0,false);targetCtx.stroke();break; case CI.SLIP_SW: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.SLIP_NW: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.SLIP_NE: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();break; case CI.SLIP_SE: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.DBL_SLIP_NW_SE: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.DBL_SLIP_NE_SW: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.SYM_N: targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.SYM_E: targetCtx.beginPath();targetCtx.arc(s,0,half,0.5*Math.PI,Math.PI,false);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,0.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.SYM_S: targetCtx.beginPath();targetCtx.arc(s,s,half,0.5*Math.PI,Math.PI,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,0.5*Math.PI,true);targetCtx.stroke();break; case CI.SYM_W: targetCtx.beginPath();targetCtx.arc(0,0,half,0,0.5*Math.PI,false);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,0.5*Math.PI,true);targetCtx.stroke();break; default: if(size > 10) console.warn("Unknown caseIndex:", caseIndex); }
+        switch (caseIndex) { case CI.EMPTY: break; case CI.V_STRAIGHT: targetCtx.beginPath(); targetCtx.moveTo(half, 0); targetCtx.lineTo(half, s); targetCtx.stroke(); break; case CI.H_STRAIGHT: targetCtx.beginPath(); targetCtx.moveTo(0, half); targetCtx.lineTo(s, half); targetCtx.stroke(); break; case CI.DEAD_N: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half-s*0.15,half);targetCtx.lineTo(half+s*0.15,half);targetCtx.stroke();break; case CI.DEAD_E: targetCtx.beginPath();targetCtx.moveTo(s,half);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half,half-s*0.15);targetCtx.lineTo(half,half+s*0.15);targetCtx.stroke();break; case CI.DEAD_S: targetCtx.beginPath();targetCtx.moveTo(half,s);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half-s*0.15,half);targetCtx.lineTo(half+s*0.15,half);targetCtx.stroke();break; case CI.DEAD_W: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(half,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.lineWidth=Math.max(1,s/20);targetCtx.moveTo(half,half-s*0.15);targetCtx.lineTo(half,half+s*0.15);targetCtx.stroke();break; case CI.TURN_N_E: targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();break; case CI.TURN_S_E: targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.TURN_S_W: targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.TURN_N_W: targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.DIAMOND_X: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();if(isOverpass&&size>10){const gap=s*0.15;targetCtx.moveTo(0,half);targetCtx.lineTo(half-gap,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(half+gap,half);targetCtx.lineTo(s,half);targetCtx.stroke();}else{targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();}break; case CI.S_N_L: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();break; case CI.S_E_L: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.S_S_L: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.S_W_L: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.S_N_R: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0,0.5*Math.PI,false);targetCtx.stroke();break; case CI.S_E_R: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,0.5*Math.PI,Math.PI,false);targetCtx.stroke();break; case CI.S_S_R: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,Math.PI,1.5*Math.PI,false);targetCtx.stroke();break; case CI.S_W_R: targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,1.5*Math.PI,0,false);targetCtx.stroke();break; case CI.SLIP_SW: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.SLIP_NW: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.SLIP_NE: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();break; case CI.SLIP_SE: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.DBL_SLIP_NW_SE: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,1.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.DBL_SLIP_NE_SW: targetCtx.beginPath();targetCtx.moveTo(half,0);targetCtx.lineTo(half,s);targetCtx.stroke();targetCtx.beginPath();targetCtx.moveTo(0,half);targetCtx.lineTo(s,half);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.SYM_N: targetCtx.beginPath();targetCtx.arc(s,0,half,Math.PI,0.5*Math.PI,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,0,half,0.5*Math.PI,0,true);targetCtx.stroke();break; case CI.SYM_E: targetCtx.beginPath();targetCtx.arc(s,0,half,0.5*Math.PI,Math.PI,false);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(s,s,half,0.5*Math.PI,Math.PI,true);targetCtx.stroke();break; case CI.SYM_S: targetCtx.beginPath();targetCtx.arc(s,s,half,0.5*Math.PI,Math.PI,true);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; case CI.SYM_W: targetCtx.beginPath();targetCtx.arc(0,0,half,0,0.5*Math.PI,false);targetCtx.stroke();targetCtx.beginPath();targetCtx.arc(0,s,half,0,1.5*Math.PI,true);targetCtx.stroke();break; default: if(size > 10) console.warn("Unknown caseIndex:", caseIndex); }
         if (isStation && stationId != null && size > 15) { targetCtx.fillStyle = STATION_ID_COLOR; const fontSize = Math.max(8, Math.min(Math.floor(s * 0.25), 10)); targetCtx.font = `${fontSize}px Arial`; targetCtx.textAlign = 'left'; targetCtx.textBaseline = 'top'; targetCtx.fillText(stationId.toString(), s * 0.08, s * 0.08); }
         targetCtx.restore(); 
     }
 
     function getCellsOnLine(r1, c1, r2, c2) { const cells = []; const dr = r2 - r1; const dc = c2 - c1; const steps = Math.max(Math.abs(dr), Math.abs(dc)); if (steps === 0) { if (!cells.find(cell => cell.r === r1 && cell.c === c1)) cells.push({ r: r1, c: c1 }); return cells; } for (let i = 0; i <= steps; i++) { const r_ = Math.round(r1 + (dr / steps) * i); const c_ = Math.round(c1 + (dc / steps) * i); if (!cells.find(cell => cell.r === r_ && cell.c === c_)) { cells.push({ r: r_, c: c_ }); } } return cells; }
-    function updateCellAndRefresh(r_update, c_update) { if (r_update < 0 || r_update >= numRows || c_update < 0 || c_update >= numCols) return; const cell = gridData[r_update][c_update]; const { caseIndex: newResolvedCaseIndex } = mapConnectionsToCaseIndexAndRotation(cell.N, cell.E, cell.S, cell.W); const currentTypeDef = TILE_DEFINITIONS[cell.caseIndex]; let typeStillMatchesConnections = false; if (currentTypeDef) { typeStillMatchesConnections = (currentTypeDef.N === cell.N && currentTypeDef.E === cell.E && currentTypeDef.S === cell.S && currentTypeDef.W === cell.W); } if (!typeStillMatchesConnections) { cell.caseIndex = newResolvedCaseIndex; } const finalCaseIndex = cell.caseIndex; if (!(finalCaseIndex === CI.V_STRAIGHT || finalCaseIndex === CI.H_STRAIGHT)) { if (cell.isStation) { cell.isStation = false; cell.stationId = null; } } if (finalCaseIndex !== CI.DIAMOND_X) { cell.isOverpass = false; } }
+    function updateCellAndRefresh(r_update, c_update) { 
+        if (r_update < 0 || r_update >= numRows || c_update < 0 || c_update >= numCols) return; 
+        const cell = gridData[r_update][c_update]; 
+        const { caseIndex: newResolvedCaseIndex } = mapConnectionsToCaseIndexAndRotation(cell.N, cell.E, cell.S, cell.W); 
+        const currentTypeDef = TILE_DEFINITIONS[cell.caseIndex]; 
+        let typeStillMatchesConnections = false; 
+        if (currentTypeDef) { 
+            typeStillMatchesConnections = (currentTypeDef.N === cell.N && currentTypeDef.E === cell.E && currentTypeDef.S === cell.S && currentTypeDef.W === cell.W); 
+        } 
+        if (!typeStillMatchesConnections) { 
+            cell.caseIndex = newResolvedCaseIndex; 
+        } 
+        const finalCaseIndex = cell.caseIndex; 
+        if (!(finalCaseIndex === CI.V_STRAIGHT || finalCaseIndex === CI.H_STRAIGHT)) { 
+            if (cell.isStation) { cell.isStation = false; cell.stationId = null; } 
+        } 
+        if (finalCaseIndex !== CI.DIAMOND_X) { 
+            cell.isOverpass = false; 
+        } 
+    }
     canvas.addEventListener('mousedown', (e) => { 
 
-        if (isSelectingStationsForLine || isEditingInOpsManager) return; 
+        if (isSelectingStationsForLine || isSelectingStartCell || isSelectingEndCell || isEditingInOpsManager) return; 
 
         const rect = canvas.getBoundingClientRect(); 
         const x_mouse = e.clientX - rect.left; 
@@ -1467,9 +1969,40 @@
         const c_click = Math.floor(x_click / cellSize); 
         const r_click = Math.floor(y_click / cellSize);
 
+        // If selecting stations for a line (the original functionality)
         if (isSelectingStationsForLine) {
             handleStationSelectionClick(r_click, c_click);
             return;
+        }
+
+        // If selecting a single start/end cell
+        if (isSelectingStartCell || isSelectingEndCell) {
+            if (r_click < 0 || r_click >= numRows || c_click < 0 || c_click >= numCols) return;
+
+            const cell = gridData[r_click][c_click];
+            const stationIds = lineStationsInput.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && Number.isInteger(n));
+
+            let targetStationId;
+            if (isSelectingStartCell) {
+                targetStationId = stationIds[0];
+            } else { // isSelectingEndCell
+                targetStationId = stationIds[stationIds.length - 1];
+            }
+
+            if (cell.isStation && cell.stationId === targetStationId) {
+                // Valid cell within the target station clicked
+                if (isSelectingStartCell) {
+                    lineBuilderData.startCell = { r: r_click, c: c_click };
+                    updateCellDisplay(lineBuilderData.startCell, startCellDisplay);
+                } else { // isSelectingEndCell
+                    lineBuilderData.endCell = { r: r_click, c: c_click };
+                    updateCellDisplay(lineBuilderData.endCell, endCellDisplay);
+                }
+                endSingleCellSelectionMode(false); // Finish selection and apply
+            } else {
+                alert(`Please select a cell that belongs to Station #${targetStationId}.`);
+            }
+            return; // Handled cell selection, don't proceed to regular cell selection
         }
 
         if (r_click < 0 || r_click >= numRows || c_click < 0 || c_click >= numCols) {
@@ -1520,15 +2053,82 @@
         } 
         lastCell = { r: r_move, c: c_move }; 
         if (isDrawing) { validateGrid(); drawGrid(); } });
-    function handleInteractionEnd() { if (isDrawing || isErasing) { isDrawing = false; isErasing = false; lastCell = null; exportAllDataToTextAreas(); saveState(); } }
+    function handleInteractionEnd() { 
+        if (isDrawing || isErasing) { 
+            isDrawing = false; 
+            isErasing = false; 
+            lastCell = null; 
+            exportAllDataToTextAreas(); 
+            saveState(); 
+        } 
+    }
     canvas.addEventListener('mouseup', handleInteractionEnd); canvas.addEventListener('mouseleave', handleInteractionEnd); canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     function rotateSelectedCell() { if (!selectedCellCoords || rotatePieceButton.disabled) return; const { r, c } = selectedCellCoords; if (ROTATION_MAP[gridData[r][c].caseIndex]) { applyPieceChangeToCell(r, c, ROTATION_MAP[gridData[r][c].caseIndex]); } }
     function flipSelectedCell() { if (!selectedCellCoords || flipPieceButton.disabled) return; const { r, c } = selectedCellCoords; if (FLIP_MAP[gridData[r][c].caseIndex]) { applyPieceChangeToCell(r, c, FLIP_MAP[gridData[r][c].caseIndex]); } }
     function cycleSelectedCell(forward) { if (!selectedCellCoords) return; const { r, c } = selectedCellCoords; const cell = gridData[r][c]; let currentCase = cell.caseIndex; let currentIndexInCycle = CYCLEABLE_CASE_INDEXES.indexOf(currentCase); if (currentIndexInCycle === -1 && currentCase !== CI.EMPTY) { for(const base of CYCLEABLE_CASE_INDEXES){ if(isRotationalOrFlipVariant(base, currentCase)) {currentIndexInCycle = CYCLEABLE_CASE_INDEXES.indexOf(base); break;} } if (currentIndexInCycle === -1) currentIndexInCycle = 0; } if (forward) { currentIndexInCycle = (currentIndexInCycle + 1) % CYCLEABLE_CASE_INDEXES.length; } else { currentIndexInCycle = (currentIndexInCycle - 1 + CYCLEABLE_CASE_INDEXES.length) % CYCLEABLE_CASE_INDEXES.length; } applyPieceChangeToCell(r, c, CYCLEABLE_CASE_INDEXES[currentIndexInCycle]); }
+    
+    function performRenameStation() {
+        if (!selectedCellCoords || renameStationButton.disabled) return;
+        const { r, c } = selectedCellCoords;
+        const cell = gridData[r][c];
+        const oldId = cell.stationId;
+        const newIdStr = prompt(`Rename all connected parts of Station #${oldId} to a new ID:`, oldId);
+        if (newIdStr === null || newIdStr.trim() === "") return;
+        const newId = parseInt(newIdStr, 10);
+        if (isNaN(newId) || !Number.isInteger(newId) || newId < 0) {
+            alert("Invalid ID. Please enter a non-negative integer.");
+            return;
+        }
+        let idInUse = false;
+        if (newId !== oldId) {
+            for (let row of gridData) {
+                for (let currentCell of row) {
+                    if (currentCell.isStation && currentCell.stationId === newId) {
+                        idInUse = true;
+                        break;
+                    }
+                }
+                if (idInUse) break;
+            }
+        }
+        if (idInUse) {
+            alert(`Error: Station ID #${newId} is already in use.`);
+            return;
+        }
+        for (let row of gridData) {
+            for (let currentCell of row) {
+                if (currentCell.isStation && currentCell.stationId === oldId) {
+                    currentCell.stationId = newId;
+                }
+            }
+        }
+        nextStationId = Math.max(nextStationId, newId + 1);
+        validateGrid();
+        drawGrid();
+        updateSelectionUI();
+        exportAllDataToTextAreas();
+        saveState();
+    }
+
     window.addEventListener('keydown', (e) => {
         const key = e.key.toLowerCase();
         if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-        if (isSelectingStationsForLine) return; // Block key events during selection
+        
+        // Escape key to exit overlay/selection modes
+        if (e.key === 'Escape') {
+            if (isSelectingStationsForLine) {
+                endStationSelectionMode(true);
+                e.preventDefault();
+                return;
+            }
+            if (isSelectingStartCell || isSelectingEndCell) {
+                endSingleCellSelectionMode(true);
+                e.preventDefault();
+                return;
+            }
+        }
+
+        if (isSelectingStationsForLine || isSelectingStartCell || isSelectingEndCell) return; 
         if (selectedCellCoords) {
             let moved = false;
             let { r, c } = selectedCellCoords;
@@ -1550,9 +2150,9 @@
         if (key === 'w') { redoButton.click(); return; }
         if (!selectedCellCoords) return;
         if (key === 'r') { rotateSelectedCell(); }
-        else if (key === 'f') { flipSelectedCell(); }
+        else if (key === 'f') { flipSelectedCell(); } 
         else if (key === 's') { toggleStationButton.click(); }
-        else if (key === 'd') { renameStationButton.click(); }
+        else if (key === 'd') { performRenameStation(); } 
         else if (key === 'c') { toggleOverpassButton.click(); }
         else if (key === 'x') { cycleSelectedCell(true); }
         else if (key === 'y') { cycleSelectedCell(false); }
@@ -1563,9 +2163,9 @@
     closePaletteButton.addEventListener('click', () => { if (selectedCellCoords) { selectedCellCoords = null; updateSelectionUI(); drawGrid(); } });
     toggleStationButton.addEventListener('click', () => { if (!selectedCellCoords || toggleStationButton.disabled) return; const { r, c } = selectedCellCoords; const cell = gridData[r][c]; cell.isStation = !cell.isStation; if (cell.isStation) { unifyAdjacentStations(r, c); } else { cell.stationId = null; } validateGrid(); drawGrid(); updateSelectionUI(); exportAllDataToTextAreas(); saveState(); });
     toggleOverpassButton.addEventListener('click', () => { if (!selectedCellCoords || toggleOverpassButton.disabled) return; const { r, c } = selectedCellCoords; gridData[r][c].isOverpass = !gridData[r][c].isOverpass; validateGrid(); drawGrid(); updateSelectionUI(); exportOverpassesToText(); saveState(); });
-    renameStationButton.addEventListener('click', () => { if (!selectedCellCoords || renameStationButton.disabled) return; const { r, c } = selectedCellCoords; const cell = gridData[r][c]; const oldId = cell.stationId; const newIdStr = prompt(`Rename all connected parts of Station #${oldId} to a new ID:`, oldId); if (newIdStr === null || newIdStr.trim() === "") return; const newId = parseInt(newIdStr, 10); if (isNaN(newId) || !Number.isInteger(newId) || newId < 0) { alert("Invalid ID. Please enter a non-negative integer."); return; } let idInUse = false; if (newId !== oldId) { for (let row of gridData) { for (let currentCell of row) { if (currentCell.isStation && currentCell.stationId === newId) { idInUse = true; break; } } if (idInUse) break; } } if (idInUse) { alert(`Error: Station ID #${newId} is already in use.`); return; } for (let row of gridData) { for (let currentCell of row) { if (currentCell.isStation && currentCell.stationId === oldId) { currentCell.stationId = newId; } } } nextStationId = Math.max(nextStationId, newId + 1); validateGrid(); drawGrid(); updateSelectionUI(); exportAllDataToTextAreas(); saveState(); });
+    renameStationButton.addEventListener('click', () => { if(!renameStationButton.disabled) performRenameStation(); }); 
     function updateSelectionUI() { 
-        if(isSelectingStationsForLine) return; // Don't show regular selection UI in this mode
+        if(isSelectingStationsForLine || isSelectingStartCell || isSelectingEndCell) return; 
         if (selectedCellCoords) { 
             const {r, c} = selectedCellCoords; 
             const cell = gridData[r][c]; 
@@ -1600,7 +2200,7 @@
     function exportOverpassesToText() { const overpassCoords = []; if (gridData && gridData.length > 0) { for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { if (gridData[r][c].isOverpass && gridData[r][c].caseIndex === CI.DIAMOND_X) { overpassCoords.push([r, c]); } } } } overpassImportExportText.value = JSON.stringify(overpassCoords, null, 2); }
     function importOverpassesFromText() { try { const coordsToImport = JSON.parse(overpassImportExportText.value); if (!Array.isArray(coordsToImport) || !coordsToImport.every(item => Array.isArray(item) && item.length === 2 && typeof item[0] === 'number' && typeof item[1] === 'number')) { throw new Error("Invalid overpass data format."); } gridData.forEach(row => row.forEach(cell => cell.isOverpass = false )); let appliedCount = 0; coordsToImport.forEach(([r, c]) => { if (r >= 0 && r < numRows && c >= 0 && c < numCols && gridData[r][c].caseIndex === CI.DIAMOND_X) { gridData[r][c].isOverpass = true; appliedCount++; } else { console.warn(`Cannot apply overpass to [${r},${c}]`); } }); validateGrid(); drawGrid(); updateSelectionUI(); saveState(); alert(`Imported ${appliedCount} overpass(es). Existing overpasses cleared first.`); } catch (error) { console.error("Overpass import failed:", error); alert("Overpass import: " + error.message); } }
     function exportStationsToText() { const stationData = []; if (gridData && gridData.length > 0) { const uniqueStations = new Set(); for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { const cell = gridData[r][c]; if (cell.isStation && cell.stationId != null) { uniqueStations.add(JSON.stringify([cell.stationId, r, c])); } } } stationData.push(...Array.from(uniqueStations).map(s => JSON.parse(s))); stationData.sort((a,b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]); } stationImportExportText.value = JSON.stringify(stationData, null, 2); }
-    function importStationsFromText() { try { const dataToImport = JSON.parse(stationImportExportText.value); if (!Array.isArray(dataToImport) || !dataToImport.every(item => Array.isArray(item) && item.length === 3 && typeof item[0] === 'number' && typeof item[1] === 'number' && typeof item[2] === 'number')) { throw new Error("Invalid station data format."); } gridData.forEach(row => row.forEach(cell => { cell.isStation = false; })); let appliedCount = 0; let maxImportedId = 0; dataToImport.forEach(([id, r, c]) => { if (r >= 0 && r < numRows && c >= 0 && c < numCols && (gridData[r][c].caseIndex === CI.V_STRAIGHT || gridData[r][c].caseIndex === CI.H_STRAIGHT)) { gridData[r][c].isStation = true; gridData[r][c].stationId = id; if (id > maxImportedId) maxImportedId = id; appliedCount++; } else { console.warn(`Cannot apply station ID ${id} to [${r},${c}]`); } }); nextStationId = Math.max(nextStationId, maxImportedId + 1); validateGrid(); drawGrid(); updateSelectionUI(); saveState(); alert(`Imported ${appliedCount} station(s). Existing active stations cleared first. Station IDs updated.`); } catch (error) { console.error("Station import failed:", error); alert("Station import: " + error.message); } }
+    function importStationsFromText() { try { const dataToImport = JSON.parse(stationImportExportText.value); if (!Array.isArray(dataToImport) || !dataToImport.every(item => Array.isArray(item) && item.length === 3 && typeof item[0] === 'number' && typeof item[1] === 'number' && typeof item[2] === 'number')) { throw new Error("Invalid station data format."); } gridData.forEach(row => row.forEach(cell => { cell.isStation = false; })); let appliedCount = 0; let maxImportedId = 0; dataToImport.forEach(([id, r, c]) => { if (r >= 0 && r < numRows && c >= 0 && c < numCols && (gridData[r][c].caseIndex === CI.V_STRAIGHT || gridData[r][c].caseIndex === CI.H_STRAIGHT)) { gridData[r][c].isStation = true; gridData[r][c].stationId = id; if (id > maxImportedId) maxImportedId = id; appliedCount++; } else { console.warn(`Cannot apply station ID ${id} from JSON to [${r},${c}]`); } }); nextStationId = Math.max(nextStationId, maxImportedId + 1); validateGrid(); drawGrid(); updateSelectionUI(); saveState(); alert(`Imported ${appliedCount} station(s). Existing active stations cleared first. Station IDs updated.`); } catch (error) { console.error("Station import failed:", error); alert("Station import: " + error.message); } }
     
     function exportAllToJson() {
         if (!gridData || gridData.length === 0) { alert("Grid is not initialized."); return; }
@@ -1627,9 +2227,9 @@
 
         // --- Flatland Export Data ---
         const flatlandLine = {
-            agent_positions: [],
-            agent_directions: [],
-            agent_targets: [],
+            agent_positions: [], // List[List[List[r, c]]]
+            agent_directions: [], // List[List[List[int]]]
+            agent_targets: [], // List[List[r, c]]
             agent_speeds: []
         };
         const flatlandTimetable = {
@@ -1647,44 +2247,79 @@
                 return; // Skip schedules that aren't valid journeys
             }
 
-            // 1. agent_positions
-            const agentPositionsList = [];
-            // This loop goes to length-1, correctly omitting the last station
-            for (let i = 0; i < line.stationIds.length - 1; i++) {
+            // 1. agent_positions (List of List of List of coords)
+            const agentPositionsForAgent = []; 
+            
+            // For the first station, use line.startCell or default
+            let firstStationCell = line.startCell;
+            if (!firstStationCell) {
+                firstStationCell = getDefaultStationCell(line.stationIds[0]);
+            }
+            if (firstStationCell) {
+                agentPositionsForAgent.push([[firstStationCell.r, firstStationCell.c]]); // Single cell for start
+            } else {
+                console.warn(`Could not determine start cell for line ${line.name}. Using default (0,0) for Flatland export.`);
+                agentPositionsForAgent.push([[0, 0]]); // Fallback
+            }
+
+            // For intermediate stations, use all cells in the station
+            for (let i = 1; i < line.stationIds.length - 1; i++) { 
                 const stationId = line.stationIds[i];
-                const coords = getStationCoords(stationId);
-                if (coords) agentPositionsList.push(coords);
+                const cells = findStationCells(stationId).map(cell => [cell.r, cell.c]);
+                agentPositionsForAgent.push(cells); 
             }
-            flatlandLine.agent_positions.push(agentPositionsList);
+            flatlandLine.agent_positions.push(agentPositionsForAgent);
 
 
-            // 2. agent_directions
-            const agentDirectionsList = [];
-             // This loop goes to length-1, correctly getting the direction for each segment
-            for (let i = 0; i < line.stationIds.length - 1; i++) {
-                const startId = line.stationIds[i];
-                const endId = line.stationIds[i+1];
-                const direction = getDepartureDirection(startId, endId);
-                agentDirectionsList.push(direction !== -1 ? direction : null); // Use null for impossible paths
+            // 2. agent_directions (List of List of List of directions)
+            const agentDirectionsForAgent = []; 
+            
+            // For the first segment, use the chosen/default start cell to find initial direction
+            if (firstStationCell && line.stationIds.length > 1) {
+                 const targetStationIdForFirstSegment = line.stationIds[1];
+                 const direction = getDepartureDirectionFromCell(firstStationCell.r, firstStationCell.c, targetStationIdForFirstSegment);
+                 agentDirectionsForAgent.push([direction !== null ? direction : -1]); // Single direction for initial segment
+            } else {
+                 agentDirectionsForAgent.push([-1]); // Fallback
             }
-            flatlandLine.agent_directions.push(agentDirectionsList);
+
+            // For subsequent segments, use all cells of the departing station
+            for (let i = 1; i < line.stationIds.length - 1; i++) { // From 2nd station to (last-1)th station
+                const startStationId = line.stationIds[i];
+                const endStationId = line.stationIds[i + 1];
+                const startCells = findStationCells(startStationId);
+                
+                const directionsFromStationCells = []; 
+                startCells.forEach(startCell => {
+                    const direction = getDepartureDirectionFromCell(startCell.r, startCell.c, endStationId);
+                    directionsFromStationCells.push(direction !== null ? direction : -1); 
+                });
+                agentDirectionsForAgent.push(directionsFromStationCells);
+            }
+            flatlandLine.agent_directions.push(agentDirectionsForAgent);
 
 
-            // 3. agent_targets
-            const lastStationId = line.stationIds[line.stationIds.length - 1];
-            const targetCoords = getStationCoords(lastStationId);
-            if (targetCoords) flatlandLine.agent_targets.push(targetCoords);
+            // 3. agent_targets (List of List of coords)
+            let lastStationCell = line.endCell;
+            if (!lastStationCell) {
+                lastStationCell = getDefaultStationCell(line.stationIds[line.stationIds.length - 1]);
+            }
+            if (lastStationCell) {
+                flatlandLine.agent_targets.push([[lastStationCell.r, lastStationCell.c]]); // Single cell for target
+            } else {
+                console.warn(`Could not determine end cell for line ${line.name}. Using default (0,0) for Flatland export.`);
+                flatlandLine.agent_targets.push([[0, 0]]); // Fallback
+            }
+
 
             // 4. agent_speeds
             flatlandLine.agent_speeds.push(train.speed);
 
-            // 5. Timetable data (Corrected)
+            // 5. Timetable data
             const earliestDepartures = [];
-            const latestArrivals = []; // FIX: Initialized as empty array
+            const latestArrivals = []; 
 
             schedule.stops.forEach(stop => {
-                // The schedule editor disables input for the first arrival and last departure,
-                // so their values in the data are null. We just add all of them.
                 earliestDepartures.push(stop.earliestDeparture);
                 latestArrivals.push(stop.latestArrival);
                 
@@ -1692,13 +2327,12 @@
                     maxLatestArrival = stop.latestArrival;
                 }
             });
-            // FIX: Removed the line that pushed a final null to earliestDepartures
 
             flatlandTimetable.earliest_departures.push(earliestDepartures);
             flatlandTimetable.latest_arrivals.push(latestArrivals);
         });
 
-        flatlandTimetable.max_episode_steps = maxLatestArrival * 2;
+        flatlandTimetable.max_episode_steps = maxLatestArrival * 2; // Simple heuristic for episode steps
 
         const dataToExport = {
             gridDimensions: { rows: numRows, cols: numCols, cellSize: cellSize },
@@ -1725,11 +2359,82 @@
         URL.revokeObjectURL(url);
     }
     
-    function importAllFromJson(jsonString) { try { const data = JSON.parse(jsonString); if (!data.grid || !Array.isArray(data.grid)) { throw new Error("JSON file must contain a 'grid' array."); } let newRows, newCols, newCellSize; if (data.gridDimensions) { newRows = data.gridDimensions.rows; newCols = data.gridDimensions.cols; newCellSize = data.gridDimensions.cellSize || 25; if (data.grid.length > 0) { if (data.grid.length !== newRows) newRows = data.grid.length; if (data.grid[0].length !== newCols) newCols = data.grid[0].length; } } else { newRows = data.grid.length; newCols = data.grid.length > 0 ? data.grid[0].length : 0; newCellSize = 25; } document.getElementById('rows').value = newRows; document.getElementById('cols').value = newCols; document.getElementById('cellSize').value = newCellSize; initializeOrResizeGrid(true); const importedNumericArray = data.grid; for (let r = 0; r < numRows; r++) { for (let c = 0; c < numCols; c++) { if (importedNumericArray[r] && importedNumericArray[r][c] !== undefined) { const cell = gridData[r][c]; cell.caseIndex = importedNumericArray[r][c]; const expected = getExpectedConnections(cell.caseIndex); cell.N = expected.N; cell.E = expected.E; cell.S = expected.S; cell.W = expected.W; } } } (data.overpasses || []).forEach(([r, c]) => { if (r >= 0 && r < numRows && c >= 0 && c < numCols && gridData[r][c].caseIndex === CI.DIAMOND_X) { gridData[r][c].isOverpass = true; } else { console.warn(`Cannot apply overpass from JSON to [${r},${c}]`); } }); let maxImportedId = 0; (data.stations || []).forEach(s => { const {id, r, c} = s; if (r >= 0 && r < numRows && c >= 0 && c < numCols && (gridData[r][c].caseIndex === CI.V_STRAIGHT || gridData[r][c].caseIndex === CI.H_STRAIGHT)) { gridData[r][c].isStation = true; gridData[r][c].stationId = id; if (id > maxImportedId) maxImportedId = id; } else { console.warn(`Cannot apply station ID ${id} from JSON to [${r},${c}]`); } }); nextStationId = data.nextStationId !== undefined ? data.nextStationId : ((data.stations || []).length > 0 ? Math.max(1, maxImportedId + 1) : 1); 
-        lines = data.lines || []; 
-        schedules = data.schedules || [];
-        trainClasses = data.trainClasses || [ { id: 1, name: "High-Speed", speed: 1.0 }, { id: 2, name: "Express", speed: 0.8 }, { id: 3, name: "Local", speed: 0.6 }, { id: 4, name: "Cargo", speed: 0.5 } ];
-        selectedCellCoords = null; validateGrid(); drawGrid(); updateSelectionUI(); exportAllDataToTextAreas(); saveState(); alert("Full layout imported successfully!"); } catch (error) { console.error("Full Layout Import failed:", error); alert("Full Layout Import failed: " + error.message); } }
+    function importAllFromJson(jsonString) { 
+        try { 
+            const data = JSON.parse(jsonString); 
+            if (!data.grid || !Array.isArray(data.grid)) { throw new Error("JSON file must contain a 'grid' array."); } 
+            let newRows, newCols, newCellSize; 
+            if (data.gridDimensions) { 
+                newRows = data.gridDimensions.rows; 
+                newCols = data.gridDimensions.cols; 
+                newCellSize = data.gridDimensions.cellSize || 25; 
+                if (data.grid.length > 0) { 
+                    if (data.grid.length !== newRows) newRows = data.grid.length; 
+                    if (data.grid[0].length !== newCols) newCols = data.grid[0].length; 
+                } 
+            } else { 
+                newRows = data.grid.length; 
+                newCols = data.grid.length > 0 ? data.grid[0].length : 0; 
+                newCellSize = 25; 
+            } 
+            document.getElementById('rows').value = newRows; 
+            document.getElementById('cols').value = newCols; 
+            document.getElementById('cellSize').value = newCellSize; 
+            initializeOrResizeGrid(true); 
+            const importedNumericArray = data.grid; 
+            for (let r = 0; r < numRows; r++) { 
+                for (let c = 0; c < numCols; c++) { 
+                    if (importedNumericArray[r] && importedNumericArray[r][c] !== undefined) { 
+                        const cell = gridData[r][c]; 
+                        cell.caseIndex = importedNumericArray[r][c]; 
+                        const expected = getExpectedConnections(cell.caseIndex); 
+                        cell.N = expected.N; 
+                        cell.E = expected.E; 
+                        cell.S = expected.S; 
+                        cell.W = expected.W; 
+                    } 
+                } 
+            } 
+            (data.overpasses || []).forEach(([r, c]) => { 
+                if (r >= 0 && r < numRows && c >= 0 && c < numCols && gridData[r][c].caseIndex === CI.DIAMOND_X) { 
+                    gridData[r][c].isOverpass = true; 
+                } else { console.warn(`Cannot apply overpass from JSON to [${r},${c}]`); } 
+            }); 
+            let maxImportedId = 0; 
+            (data.stations || []).forEach(s => { 
+                const {id, r, c} = s; 
+                if (r >= 0 && r < numRows && c >= 0 && c < numCols && (gridData[r][c].caseIndex === CI.V_STRAIGHT || gridData[r][c].caseIndex === CI.H_STRAIGHT)) { 
+                    gridData[r][c].isStation = true; 
+                    gridData[r][c].stationId = id; 
+                    if (id > maxImportedId) maxImportedId = id; 
+                } else { console.warn(`Cannot apply station ID ${id} from JSON to [${r},${c}]`); } 
+            }); 
+            nextStationId = data.nextStationId !== undefined ? data.nextStationId : ((data.stations || []).length > 0 ? Math.max(1, maxImportedId + 1) : 1); 
+            
+            // Handle new line properties during import
+            lines = (data.lines || []).map(line => ({
+                id: line.id,
+                name: line.name,
+                stationIds: line.stationIds,
+                startCell: line.startCell || null, 
+                endCell: line.endCell || null      
+            }));
+
+            // Important: Handle dwellTime for schedules (new top-level property)
+            schedules = (data.schedules || []).map(schedule => ({
+                ...schedule,
+                // Default dwellTime to 2 if not present in older JSONs (or if null/undefined)
+                dwellTime: schedule.dwellTime ?? 2,
+                stops: schedule.stops.map(stop => {
+                    const { dwellTime: stopDwellTime, ...rest } = stop; // Destructure to omit any old stop.dwellTime property if it ever existed on stops
+                    return rest;
+                })
+            }));
+
+            trainClasses = data.trainClasses || [ { id: 1, name: "High-Speed", speed: 1.0 }, { id: 2, name: "Express", speed: 0.8 }, { id: 3, name: "Local", speed: 0.6 }, { id: 4, name: "Cargo", speed: 0.5 } ];
+            selectedCellCoords = null; validateGrid(); drawGrid(); updateSelectionUI(); exportAllDataToTextAreas(); saveState(); alert("Full layout imported successfully!"); 
+        } catch (error) { console.error("Full Layout Import failed:", error); alert("Full Layout Import failed: " + error.message); } 
+    }
     
     function downloadFlatlandScript() {
         const pythonScriptContent = `
@@ -1775,9 +2480,9 @@ height = data['gridDimensions']['rows']
 number_of_agents = len(data['flatland line']['agent_positions'])
 
 line = Line(
-    agent_positions = [[tuple(coords) for coords in positions] for positions in data['flatland line']['agent_positions']],
+    agent_positions = [[tuple(coords[0]) for coords in positions] for positions in data['flatland line']['agent_positions']],
     agent_directions = data['flatland line']['agent_directions'],
-    agent_targets = [tuple(coords) for coords in data['flatland line']['agent_targets']],
+    agent_targets = [tuple(coords[0]) for coords in data['flatland line']['agent_targets']],
     agent_speeds = data['flatland line']['agent_speeds'],
 )
 
@@ -1847,8 +2552,8 @@ observation, info = env.reset()
         undoButton.addEventListener('click', undo);
         redoButton.addEventListener('click', redo);
         rotatePieceButton.addEventListener('click', rotateSelectedCell);
-        flipPieceButton.addEventListener('click', flipSelectedCell);
-        renameStationButton.addEventListener('click', () => { if(!renameStationButton.disabled) renameStationButton.click() });
+        flipPieceButton.addEventListener('click', flipSelectedCell); 
+        renameStationButton.addEventListener('click', () => { if(!renameStationButton.disabled) performRenameStation(); }); 
         
         // Collapsible Data Section Listener
         dataContainerHeader.addEventListener('click', () => {
@@ -1874,6 +2579,10 @@ observation, info = env.reset()
         finishStationSelectionButton.addEventListener('click', () => endStationSelectionMode(false));
         undoStationSelectionButton.addEventListener('click', handleUndoStationSelection);
 
+        // Cell selection buttons
+        selectStartCellButton.addEventListener('click', () => startSingleCellSelectionMode('start'));
+        selectEndCellButton.addEventListener('click', () => startSingleCellSelectionMode('end'));
+
         // Schedules Tab Listeners
         newScheduleButton.addEventListener('click', () => showScheduleEditor());
         schedulesListContainer.addEventListener('click', handleSchedulesListClick);
@@ -1883,6 +2592,7 @@ observation, info = env.reset()
         scheduleLineSelect.addEventListener('change', () => populateScheduleStopsTable());
         scheduleTrainClassSelect.addEventListener('change', () => recalculateFullTimetable());
         scheduleTravelFactorInput.addEventListener('input', () => recalculateFullTimetable());
+        scheduleDwellTimeInput.addEventListener('input', () => populateScheduleStopsTable()); // NEW: Dwell time input listener now re-populates table to update suggested inputs
 
         // Trains Tab Listeners
         newTrainButton.addEventListener('click', () => showTrainEditor());
