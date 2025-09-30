@@ -2,7 +2,7 @@ import os
 import unittest
 from typing import List, Dict, Tuple, Union
 
-from src.utils.flatland_railway_extension.MultiDiGraphBuilder import MultiDiGraphBuilder
+from src.utils.graph.MultiDiGraphBuilder import MultiDiGraphBuilder
 from src.environments.scenario_loader import load_scenario_from_json
 
 from flatland.envs.rail_env import RailEnv
@@ -55,6 +55,7 @@ class TestMultiDiGraphBuilder_Complex(unittest.TestCase):
         plt.savefig(os.path.join('test', 'renders', 'test_stations'))
         self.graph = MultiDiGraphBuilder(self.env)
         
+        # station locations (row, column)
         self.stations: Dict[Union[int, str], Tuple[int, int]] = {
             1: (8,5),
             2: (8,15),
@@ -84,8 +85,7 @@ class TestMultiDiGraphBuilder_Complex(unittest.TestCase):
     def test_graph_generation(self):
         """ Test the graph generation for one scenario. """
         self.connected_graph_test()
-        self.env.reset()
-        self.assertIsNotNone(self.graph.graph, "Graph should be generated successfully.")
+        self.assertIsNotNone(self.graph.graph, "No graph generated.")
         self.assertGreater(len(self.graph.graph.nodes), 0, "Graph should contain nodes.")
         self.assertGreater(len(self.graph.graph.edges), 0, "Graph should contain edges.")
 
