@@ -125,10 +125,3 @@ class PathGenerator:
         """
         pass
 
-    def _calculate_conflict_time(self, path_A: List[Tuple[int, int]], path_B: List[Tuple[int, int]],
-                                 speed_A: float, speed_B: float, t_A: float, t_B: float) -> bool:
-        """
-        Determine whether two agents with planned paths A and B, speeds s_A, s_B and departure times 
-        t_A and t_B will conflict on overlapping paths.
-        """
-        pass
