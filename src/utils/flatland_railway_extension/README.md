@@ -16,10 +16,15 @@ The graph contains the following network information in the form of node and edg
     - ``out_direction``: the direction of travel from the origin node
     - ``in_direction``: the direction of travel to the destination node
     - ``length``: the length of the edge (number of cells)
-    - ``resources``: list of cells in the edge including their travel direction tuple (out, in)
+    - ``resources``: list of cells in the edge and including their travel direction, forming the tuple ((x,y), travel_direction). The origin and destination cells are not included in the list, only the cells in between the nodes.
     - ``max_speed``: max speed along the edge (WIP)
 
-## 2. Shortest Path and Conflict Identification
-Another feature of the ``MultiDiGraphBuilder`` is the automated calculation of k-shortest paths in the graph and identification of path conflicts. This is done under the assumption that agents learn in static environments, which represents the real-world, where network topologies do not change significantly over time. The identification of path conflicts serves to support the first iteration of agent negotiation, where agent-negotiation is initialised upon conflict identification. 
+## 2. Shortest Path Calculation 
+Using the `MultiDiGraph` constructed by ``MultiDiGraphBuilder``, paths between the nodes in the graph can be calculated. This function is used to identify the k-shortest paths between each station pair. This is done under the assumption that agents learn in static environments, which represents the real-world, where network topologies do not change significantly over time. 
 
 The ``PathGenerator`` class from ``utils.graph.paths.py`` determines the k-shortest paths between station nodes in the graph. The current workaround transforms the ``MultiDiGraph`` into a normal ``DiGraph``, calculates the shortest paths, and then reestablishes the ``MultiDiGraph`` afterwards. The ``PathGenerator`` also contains functions to determine the occupancy times of nodes and edges, thereby allowing for conflict detection. 
+
+
+## Conflict Identification
+Given a path consisting of one or multiple edges, the expected entry and exit time of each path segment can be calculated, which is then used to identify potential conflicts. The identification of path conflicts serves to support the initialisation of agent negotiation.
+
