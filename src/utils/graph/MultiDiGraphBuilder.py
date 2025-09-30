@@ -119,8 +119,6 @@ class MultiDiGraphBuilder:
                 else:
                     self._add_edge(node, next_node, attr=edge_attr)
 
-                        
-
 
     def _find_next_node(self, previous_position: Tuple[int, int], travel_direction: int) -> Tuple[int, Tuple[int, int], int, List[Tuple[Tuple[int, int], int]], bool]:
         """
@@ -185,6 +183,7 @@ class MultiDiGraphBuilder:
             'resources': resources, 
             'length': len(resources),
             'max_speed': None,
+            'available': True,
             'dead_end': dead_end
         }
         return current_position, edge_attr, dead_end
