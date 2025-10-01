@@ -2,7 +2,7 @@ from typing import Dict, Tuple, Union, List
 
 import networkx as nx
 from src.utils.graph.MultiDiGraphBuilder import MultiDiGraphBuilder
-from src.utils.graph.paths import PathGenerator
+from src.utils.graph.PathGenerator import PathGenerator
 
 from flatland.envs.rail_env import RailEnv
 from flatland.envs.agent_utils import EnvAgent
