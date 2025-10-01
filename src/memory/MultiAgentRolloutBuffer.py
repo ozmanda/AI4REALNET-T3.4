@@ -114,7 +114,7 @@ class MultiAgentRolloutBuffer:
         self.n_episodes += 1
 
 
-    def get_transitions(self, shuffle: bool = False, gaes: bool = True) -> Dict[str, Tensor]:
+    def get_transitions(self, shuffle: bool = False, gae: bool = True) -> Dict[str, Tensor]:
         """
         Flatten over all episodes agents and return a tensor for each transition value.
         """
@@ -126,7 +126,7 @@ class MultiAgentRolloutBuffer:
         state_values = []
         next_state_values = []
         dones = []
-        if gaes:
+        if gae:
             gaes = []
         for episode in self.episodes:
             for agent_handle in range(self.n_agents):
@@ -138,7 +138,7 @@ class MultiAgentRolloutBuffer:
                 log_probs.extend(episode['log_probs'][agent_handle])
                 rewards.extend(episode['rewards'][agent_handle])
                 dones.extend(episode['dones'][agent_handle])
-                if gaes:
+                if gae:
                     gaes.extend(episode['gaes'][agent_handle])
         
         # add extras
@@ -165,22 +165,19 @@ class MultiAgentRolloutBuffer:
             log_probs = [log_probs[i] for i in indices]
             rewards = [rewards[i] for i in indices]
             dones = [dones[i] for i in indices]
-            if gaes:
+            if gae:
                 gaes = [gaes[i] for i in indices]
 
-        try:
-            return_dict: Dict = {'states': torch.stack(states).clone().detach(),
-                    'next_states': torch.stack(next_states).clone().detach(),
-                    'state_values': torch.stack(state_values).clone().detach(),
-                    'next_state_values': torch.stack(next_state_values).clone().detach(),
-                    'actions': torch.stack(actions).clone().detach(),
-                    'log_probs': torch.stack(log_probs).clone().detach(),
-                    'rewards': torch.tensor(rewards).clone().detach(),
-                    'dones': torch.tensor(dones, dtype=torch.float32).clone().detach(), 
-                    'extras': extras 
-                    }
-        except RuntimeError:
-            return None
+        return_dict: Dict = {'states': torch.stack(states).clone().detach(),
+                'next_states': torch.stack(next_states).clone().detach(),
+                'state_values': torch.stack(state_values).clone().detach(),
+                'next_state_values': torch.stack(next_state_values).clone().detach(),
+                'actions': torch.stack(actions).clone().detach(),
+                'log_probs': torch.stack(log_probs).clone().detach(),
+                'rewards': torch.tensor(rewards).clone().detach(),
+                'dones': torch.tensor(dones, dtype=torch.float32).clone().detach(), 
+                'extras': extras 
+                }
         if gaes:
             return_dict['gaes'] = torch.stack(gaes).clone().detach()
 
