@@ -4,34 +4,22 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
-
         {
-            "name": "main.py",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}main.py",
-            "console": "integratedTerminal",
-            "args": [
-                "--epochs", "6",
-                "--epoch_size", "50",
-                "--batch_size", "200",
-                "--target_update_freq", "5",
-                "--model_name", "test",
-                "--save_every", "2",
-                "--comm", "True",
-                "--comm_passes", "3"
-            ]
-        },
-        {
-            "name": "PPO Synchronous",
+            "name": "PPO Synchronous (Debug)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}run/ppo.py",
             "console": "integratedTerminal",
         },
         {
-            "name": "IMPALA Asynchronous Test",
+            "name": "PPO Synchronous",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/run/ppo.py",
+            "console": "integratedTerminal",
+        },
+        {
+            "name": "IMPALA Asynchronous (Debug)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}run/impala.py",
