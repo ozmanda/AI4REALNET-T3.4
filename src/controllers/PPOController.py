@@ -175,13 +175,3 @@ class PPOController(nn.Module):
             'critic_network': self.critic_network.state_dict()
         }
         return state_dict
-    
-    
-    def update_weights(self, state_dict: Dict) -> None:
-        """
-        Update the weights of the PPO controller with the given state dictionary.
-        """
-        if 'actor_network' in state_dict:
-            self.actor_network.load_state_dict(state_dict['actor_network'])
-        if 'critic_network' in state_dict:
-            self.critic_network.load_state_dict(state_dict['critic_network'])
