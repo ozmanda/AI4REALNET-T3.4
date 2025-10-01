@@ -7,7 +7,7 @@ max_optimisation_steps: 1000
 
 # Learner Config
 learner_config: 
-    run_name: "parallel_test"
+    run_name: "FNN_run1"
     max_steps: 10000
     max_steps_per_episode: 400
     target_updates: 1000
@@ -74,4 +74,3 @@ environment_config:
       1.: 0.7
       0.5: 0.3
     reward_config: 0
-    random_seed: 42
