@@ -36,7 +36,7 @@ class PPOWorker(mp.Process):
         self.barrier = barrier
         self.done_event: Event = done_event
         self.device: str = device
-        self.local_update_step: int = 0
+        self.local_update_step: int = -1
 
         # env and controller setup
         self.env_config: FlatlandEnvConfig = env_config
@@ -92,6 +92,7 @@ class PPOWorker(mp.Process):
                                                            n_agents=n_agents,
                                                            max_depth=self.max_depth, 
                                                            n_nodes=self.controller.config['n_nodes'])
+            # TODO: add observation normalisation when passing to controller!
             next_state_values = self.controller.state_values(next_state_tensor, extras=extras)
             self.rollout.add_transitions(states=current_state_tensor.detach(), 
                                          actions=actions_dict, 
@@ -123,6 +124,7 @@ class PPOWorker(mp.Process):
                                         'episode': self.total_episodes,
                                         'episode/reward': self.rollout.episodes[-1]['average_episode_reward'],
                                         'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})
+                # TODO: add mean and standard deviation information for normalisation (observation)
                 if not self.done_event.is_set():
                     self._wait_for_weights()
         
