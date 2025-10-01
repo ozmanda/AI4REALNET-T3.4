@@ -1,0 +1,1 @@
+These are old scripts no longer used, training runs are now contained in and initiated from the ``run`` folder.
