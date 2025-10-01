@@ -79,7 +79,7 @@ class PPOWorker(mp.Process):
                                                           n_nodes=self.controller.config['n_nodes'])
 
         while not self.done_event.is_set():
-            actions, log_probs = self.controller.sample_action(current_state_tensor)
+            actions, log_probs, values, extras = self.controller.sample_action(current_state_tensor)
             actions_dict: Dict[Union[int, str], Tensor] = {}
             
             # TODO: consider agents which have already terminated
@@ -92,18 +92,22 @@ class PPOWorker(mp.Process):
                                                            n_agents=n_agents,
                                                            max_depth=self.max_depth, 
                                                            n_nodes=self.controller.config['n_nodes'])
+            next_state_values = self.controller.state_values(next_state_tensor, extras=extras)
             self.rollout.add_transitions(states=current_state_tensor.detach(), 
                                          actions=actions_dict, 
                                          log_probs=log_probs.detach(), 
                                          rewards=rewards, 
                                          next_states=next_state_tensor.detach(), 
-                                         dones=dones)
+                                         state_values=values.squeeze(-1).detach(),
+                                         next_state_values=next_state_values.squeeze(-1).detach(),
+                                         dones=dones,
+                                         extras=extras)
 
             current_state_tensor = next_state_tensor
             episode_step += 1
 
             if all(dones.values()) or episode_step >= self.max_steps_per_episode:
-                self._generalised_advantage_estimator()
+                # self._generalised_advantage_estimator()
                 self.rollout.end_episode()
                 current_state_dict, _ = self.env.reset()
                 current_state_tensor = obs_dict_to_tensor(observation=current_state_dict, 
@@ -170,4 +174,3 @@ class PPOWorker(mp.Process):
         if self.shared_weights['update_step'] > self.local_update_step:
             self.local_update_step = self.shared_weights['update_step']
             self.controller.update_weights(self.shared_weights['controller_state'])
-            print(f'Worker {self.worker_id} updated weights\n')

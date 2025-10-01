@@ -97,7 +97,6 @@ class PPOLearner():
         """
         # Broadcast initial weights to all workers, one for each worker, ensuring they start with the same model parameters
         self.shared_weights: DictProxy = self.manager.dict()
-        self._broadcast_controller_state()
 
         # initialise learning rollout
         self.rollout = MultiAgentRolloutBuffer(n_agents=self.env_config.n_agents)
@@ -106,6 +105,7 @@ class PPOLearner():
         # TODO: add device specification for the workers
         mp.set_start_method('spawn', force=True)  # parallelisation of rollout gathering - spawn is safer for pytorch
         workers: List[PPOWorker] = []
+        print('Initialising workers...')
         for worker_id in range(self.n_workers):
             worker = PPOWorker(worker_id=worker_id,
                                logging_queue=self.logging_queue,
@@ -119,7 +119,7 @@ class PPOLearner():
                                device='cpu')
             workers.append(worker)
             worker.start()
-        self.barrier.wait()  # wait for all workers to be ready
+        self._broadcast_controller_state() # initial weight broadcast
 
         # gather rollouts and update when enough data is collected
         while self.completed_updates < self.target_updates:
@@ -166,8 +166,6 @@ class PPOLearner():
 
         # terminate all workers
         for w in workers:
-            w.join()
-        for w in workers:
             if w.is_alive():
                 w.terminate()
         
@@ -194,6 +192,7 @@ class PPOLearner():
                             self.controller.critic_network.state_dict())
         self.shared_weights['controller_state'] = controller_state
         self.shared_weights['update_step'] = self.update_step
+        self.barrier.wait()  # wait for all workers to acknowledge the new weights
 
 
     def _log_episode_info(self):
@@ -265,7 +264,8 @@ class PPOLearner():
         Calculate the loss for the actor and critic networks.
         """
         # forward pass through the actor network to get actions and log probabilities
-        transitions: Dict[str, Tensor] = rollout.get_transitions() # TODO: check that this is done correctly everywhere
+        rollout = self._gaes(rollout)
+        transitions: Dict[str, Tensor] = rollout.get_transitions(gae=True) # TODO: check that this is done correctly everywhere
         new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(transitions['states'], transitions['next_states'], transitions['actions'])
         new_state_values = new_state_values.squeeze(-1)  
         new_next_state_values = new_next_state_values.squeeze(-1)
@@ -300,7 +300,30 @@ class PPOLearner():
         # Total loss & optimisation step        # TODO: controller or learner config?
         total_loss: Tensor = actor_loss + critic_loss * self.controller.config['value_loss_coefficient'] + entropy_loss * self.controller.config['entropy_coefficient']
         return total_loss, actor_loss, critic_loss
-        
+
+
+    def _gaes(self, rollout: MultiAgentRolloutBuffer) -> MultiAgentRolloutBuffer:
+        for idx, episode in enumerate(rollout.episodes):
+            rollout.episodes[idx]['gaes'] = [[] for _ in range(self.env_config.n_agents)]
+            for agent in range(len(episode['states'])):
+                states = torch.stack(episode['states'][agent])
+                state_values = torch.stack(episode['state_values'][agent])
+                next_states = torch.stack(episode['next_states'][agent])
+                next_state_values = torch.stack(episode['next_state_values'][agent])
+                rewards = torch.tensor(episode['rewards'][agent])
+                dones = torch.tensor(episode['dones'][agent]).float()
+                dones = (dones != 0).float()
+                gaes = []
+
+                deltas = rewards + self.gamma * next_state_values * (1 - dones) - state_values
+                gae = 0
+                for t in reversed(range(len(rewards))):
+                    gae = deltas[t] + self.gamma * self.controller.config['lam'] * (1 - dones[t]) * gae
+                    gaes.insert(0, gae)
+
+                rollout.episodes[idx]['gaes'][agent] = gaes
+        return rollout
+
 
     def _evaluate(self, states: Tensor, next_states: Tensor, actions: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         """ 
