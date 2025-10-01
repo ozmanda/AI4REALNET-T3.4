@@ -43,9 +43,11 @@ class PPOController(nn.Module):
         self.entropy_coef: float = config['entropy_coefficient']
 
     def _build_actor(self) -> nn.Module:
+        # TODO: separate from critic to allow for different architectures
         self.actor_network = FeedForwardNN(self.state_size, self.config['actor_config']['hidden_size'], self.action_size)
 
     def _build_critic(self) -> nn.Module:
+        # TODO: separate from actor to allow for different architectures
         self.critic_network = FeedForwardNN(self.state_size, self.config['critic_config']['hidden_size'], 1) 
 
     def init_wandb(self) -> None:
@@ -103,7 +105,7 @@ class PPOController(nn.Module):
         return actor_params, critic_params
     
 
-    def state_values(self, states: Tensor, extras: Dict[str, Tensor], next_states: Tensor = None) -> Tensor:
+    def state_values(self, states: Tensor, extras: Dict[str, Tensor]) -> Tensor:
         """
         Get the state values from the critic network for the current and next states.
         
@@ -113,14 +115,8 @@ class PPOController(nn.Module):
         
         Returns:
             - state_values: Tensor of shape (batch_size, 1)
-            - next_state_values: Tensor of shape (batch_size, 1)
         """
-        state_values = self.critic_network(states)
-        if next_states: 
-            next_state_values = self.critic_network(next_states)
-            return state_values, next_state_values
-        else:
-            return state_values
+        return self.critic_network(states)
 
 
     def sample_action(self, states: torch.Tensor) -> torch.Tensor:
