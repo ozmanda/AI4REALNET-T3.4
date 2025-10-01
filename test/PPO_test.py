@@ -22,11 +22,10 @@ class PPO_Test(unittest.TestCase):
         # prepare environment
         self.env_config = FlatlandEnvConfig(config['environment_config'])
 
-        # prepare learner config
+        # prepare learner config - reduce for testing
         self.learner_config = config['learner_config']
-        self.learner_config['n_workers'] = 4
-
-        # reduce training time for testing purposes
+        self.learner_config['run_name'] = "test_run"
+        self.learner_config['n_workers'] = 2
         self.learner_config['target_updates'] = 2
         self.learner_config['max_steps_per_episode'] = 100
 
