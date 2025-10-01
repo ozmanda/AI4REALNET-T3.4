@@ -44,11 +44,11 @@ class PPOController(nn.Module):
 
     def _build_actor(self) -> nn.Module:
         # TODO: separate from critic to allow for different architectures
-        self.actor_network = FeedForwardNN(self.state_size, self.config['actor_config']['hidden_size'], self.action_size)
+        self.actor_network = FeedForwardNN(self.state_size, self.action_size, self.config['actor_config'])
 
     def _build_critic(self) -> nn.Module:
         # TODO: separate from actor to allow for different architectures
-        self.critic_network = FeedForwardNN(self.state_size, self.config['critic_config']['hidden_size'], 1) 
+        self.critic_network = FeedForwardNN(self.state_size, 1, self.config['critic_config'])
 
     def init_wandb(self) -> None:
         wandb.watch(self.actor_network, log='all')

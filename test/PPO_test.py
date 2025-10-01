@@ -15,8 +15,7 @@ from src.utils.obs_utils import calculate_state_size
 
 
 class PPO_Test(unittest.TestCase):
-    def setUp(self):
-        config_path: str = 'src/configs/ppo_config.yaml'
+    def setup(self, config_path: str) -> None:
         config = load_config_file(config_path)
 
         # prepare environment
@@ -55,7 +54,19 @@ class PPO_Test(unittest.TestCase):
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
 
-    def test_sync_ppo(self): 
+
+    def test_FNN(self): 
+        config_path: str = 'src/configs/ppo_config.yaml'
+        self.setup(config_path)
+        self.train_ppo(random_seed = 42,
+                       controller_config = self.controller_config,
+                       learner_config = self.learner_config,
+                       env_config = self.env_config,
+                       device = 'cpu')
+        
+    def test_LSTM(self): 
+        config_path: str = 'src/configs/PPO_LSTM.yaml'
+        self.setup(config_path)
         self.train_ppo(random_seed = 42,
                        controller_config = self.controller_config,
                        learner_config = self.learner_config,

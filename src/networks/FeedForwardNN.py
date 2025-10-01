@@ -2,17 +2,22 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from typing import Dict
 
 class FeedForwardNN(nn.Module):
-    def __init__(self, input_size: int, hidden_size: int, output_size: int) -> None:
+    def __init__(self, input_size: int, output_size: int, config: Dict) -> None:
         super(FeedForwardNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, output_size)
-        self.relu = nn.ReLU()
+        self.seq = self.make_layers(input_size, output_size, config)
+
+    def make_layers(self, input_size: int, output_size: int, config: Dict) -> nn.Sequential:
+        layers = []
+        in_size = input_size
+        for hidden_size in config['layer_sizes']:
+            layers.append(nn.Linear(in_size, hidden_size))
+            layers.append(nn.ReLU())
+            in_size = hidden_size
+        layers.append(nn.Linear(in_size, output_size))
+        return nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        activation1 = self.relu(self.fc1(x))
-        activation2 = self.relu(self.fc2(activation1))
-        output = self.fc3(activation2)
-        return output
+        return self.seq(x)
