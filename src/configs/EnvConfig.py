@@ -19,7 +19,7 @@ class FlatlandEnvConfig():
         self.malfunction_config: Dict[str, Union[float, int]] = env_config['malfunction_config']
         self.speed_ratios: Dict[Dict[float, int], float] = env_config['speed_ratios']
         self.reward_config: int = env_config['reward_config']
-        self.random_seed: int = env_config['random_seed']
+        self.random_seed: int = env_config['random_seed'] if 'random_seed' in env_config else None
 
     def create_env(self): 
         """
@@ -49,7 +49,6 @@ class FlatlandEnvConfig():
             malfunction_generator = ParamMalfunctionGen(MalfunctionParameters(malfunction_rate=self.malfunction_config['malfunction_rate'],
                                                                               min_duration=self.malfunction_config['min_duration'],
                                                                               max_duration=self.malfunction_config['max_duration']))
-            
         return RailEnv(width=self.width,
                        height=self.height,
                        number_of_agents=self.n_agents,

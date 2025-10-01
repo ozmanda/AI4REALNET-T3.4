@@ -21,8 +21,7 @@ from src.configs.ControllerConfigs import PPOControllerConfig
 from src.algorithms.PPO.PPOLearner import PPOLearner
 
 
-def train_ppo(random_seed: int, controller_config: PPOControllerConfig, learner_config: Dict, env_config: Dict, device: str) -> None:
-    init_random_seeds(random_seed)
+def train_ppo(controller_config: PPOControllerConfig, learner_config: Dict, env_config: Dict, device: str) -> None:
     learner = PPOLearner(controller_config=controller_config,
                          learner_config=learner_config,
                          env_config=env_config,
@@ -44,7 +43,7 @@ def init_random_seeds(random_seed: int, cuda_deterministic: bool = False) -> Non
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a PPO agent')
     parser.add_argument('--config_path', type=str, default='src/configs/PPO_FNN.yaml', help='Path to the configuration file')
-    parser.add_argument('--random_seed', type=int, default=42, help='Random seed for reproducibility')
+    parser.add_argument('--random_seed', type=int, default=None, help='Random seed for reproducibility')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the training on (cpu or cuda)')
     parser.add_argument('--n_workers', type=int, default=4, help='Number of parallel workers for training')
     args = parser.parse_args()
@@ -54,6 +53,8 @@ if __name__ == '__main__':
     config = load_config_file(args.config_path)
 
     # prepare environment config
+    if args.random_seed:
+        config['environment_config']['random_seed'] = args.random_seed
     env_config = FlatlandEnvConfig(config['environment_config'])
 
     # prepare controller config and setup parallelisation
@@ -68,8 +69,7 @@ if __name__ == '__main__':
     controller_config = PPOControllerConfig(config['controller_config'])
 
 
-    train_ppo(random_seed = args.random_seed,
-              controller_config = controller_config,
+    train_ppo(controller_config = controller_config,
               learner_config = learner_config,
               env_config = env_config, 
               device = args.device)
