@@ -138,7 +138,7 @@ class PPOLearner():
             # add the episode to the current rollout buffer
             if self.rollout.total_steps >= self.samples_per_update:
                 # update the controller with the current rollout
-                self._optimise(rollout = self.rollout)
+                self._optimise()
                 self.completed_updates += 1
                 print(f'\n\nCompleted Updates: {self.completed_updates} / {self.target_updates}\n\n')
 
@@ -158,7 +158,7 @@ class PPOLearner():
                 continue
 
         # final controller update
-        self._optimise(rollout=self.rollout)
+        self._optimise()
         self.completed_updates += 1
         wandb.log({
             'train/average_episode_reward': np.mean([ep['average_episode_reward'] for ep in self.rollout.episodes]),
@@ -230,7 +230,7 @@ class PPOLearner():
             raise Warning('Only Adam optimiser has been implemented')
 
 
-    def _optimise(self, rollout: MultiAgentRolloutBuffer) -> Dict[str, List[float]]:
+    def _optimise(self) -> Dict[str, List[float]]:
         """
         Optimise the model parameters using the collected rollouts.
         """
@@ -239,72 +239,74 @@ class PPOLearner():
             'value_loss': []
         }
 
-        total_loss, actor_loss, critic_loss = self._loss(rollout)
+        # forward pass through the actor network to get actions and log probabilities
+        self._gaes()
+        self.rollout.get_transitions(gae=True) # TODO: check that this is done correctly everywhere
 
-        self.optimiser.zero_grad()
-        total_loss.backward()
-        self.optimiser.step()
-        self.update_step += 1
+        for minibatch in self.rollout.get_minibatches(self.batch_size): # TODO: check that this is the right batchsize
+            new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(minibatch['states'], minibatch['next_states'], minibatch['actions'])
+            minibatch['new_log_probs'] = new_log_probs
+            minibatch['new_state_values'] = new_state_values.squeeze(-1)
+            minibatch['new_next_state_values'] = new_next_state_values.squeeze(-1)
+            minibatch['entropy'] = entropy
 
-        # add metrics
-        losses['policy_loss'].append(actor_loss.mean().item())
-        losses['value_loss'].append(critic_loss.mean().item())
+            total_loss, actor_loss, critic_loss = self._loss(minibatch)
 
-        # Log losses to wandb
-        wandb.log({
-            'update_step': self.update_step,
-            'train/policy_loss': np.mean(losses['policy_loss']),
-            'train/value_loss': np.mean(losses['value_loss'])
-        })
+            self.optimiser.zero_grad()
+            total_loss.backward()
+            self.optimiser.step()
+            self.update_step += 1
+
+            # add metrics
+            losses['policy_loss'].append(actor_loss.mean().item())
+            losses['value_loss'].append(critic_loss.mean().item())
+
+            # Log losses to wandb
+            wandb.log({
+                'update_step': self.update_step,
+                'train/policy_loss': np.mean(losses['policy_loss']),
+                'train/value_loss': np.mean(losses['value_loss'])
+            })
         return losses
     
     
-    def _loss(self, rollout: MultiAgentRolloutBuffer) -> Tuple[Tensor, Tensor, Tensor]:
+    def _loss(self, minibatch: Dict[str, Tensor]) -> Tuple[Tensor, Tensor, Tensor]:
         """
         Calculate the loss for the actor and critic networks.
         """
-        # forward pass through the actor network to get actions and log probabilities
-        rollout = self._gaes(rollout)
-        transitions: Dict[str, Tensor] = rollout.get_transitions(gae=True) # TODO: check that this is done correctly everywhere
-        new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(transitions['states'], transitions['next_states'], transitions['actions'])
-        new_state_values = new_state_values.squeeze(-1)  
-        new_next_state_values = new_next_state_values.squeeze(-1)
-
-        # Policy loss
-        old_log_probs = transitions['log_probs']
-        actor_loss = policy_loss(gae=transitions['gaes'],
-                                new_log_prob=new_log_probs,
-                                old_log_prob=old_log_probs,
+        actor_loss = policy_loss(gae=minibatch['gaes'],
+                                new_log_prob=minibatch['new_log_probs'],
+                                old_log_prob=minibatch['log_probs'],
                                 clip_eps=self.controller.config['clip_epsilon'])
-        
-        # Value loss
+
         if self.importance_sampling:
-            critic_loss = value_loss_with_IS(state_values=new_state_values,
-                                            next_state_values=new_next_state_values,
-                                            new_log_prob=new_log_probs,
-                                            old_log_prob=old_log_probs,
-                                            reward=transitions['rewards'],
-                                            done=transitions['dones'],
+            critic_loss = value_loss_with_IS(state_values=minibatch['new_state_values'],
+                                            next_state_values=minibatch['new_next_state_values'],
+                                            new_log_prob=minibatch['new_log_probs'],
+                                            old_log_prob=minibatch['log_probs'],
+                                            reward=minibatch['rewards'],
+                                            done=minibatch['dones'],
                                             gamma=self.controller.config['gamma']
                                             )
         else:
-            critic_loss = value_loss(state_values=new_state_values,
-                                    next_state_values=new_next_state_values,
-                                    reward=transitions['rewards'],
-                                    done=transitions['dones'],
-                                    gamma=self.controller.config['gamma'])
+            critic_loss = value_loss(state_values=minibatch['new_state_values'],
+                                    next_state_values=minibatch['new_next_state_values'],
+                                    reward=minibatch['rewards'],
+                                    done=minibatch['dones'],
+                                    gamma=self.controller.config['gamma'])            
             
         # Entropy bonus
-        entropy_loss = -entropy.mean()  # Encourage exploration
+        entropy_loss = -minibatch['entropy'].mean()  # Encourage exploration
 
         # Total loss & optimisation step        # TODO: controller or learner config?
         total_loss: Tensor = actor_loss + critic_loss * self.controller.config['value_loss_coefficient'] + entropy_loss * self.controller.config['entropy_coefficient']
         return total_loss, actor_loss, critic_loss
 
 
-    def _gaes(self, rollout: MultiAgentRolloutBuffer) -> MultiAgentRolloutBuffer:
-        for idx, episode in enumerate(rollout.episodes):
-            rollout.episodes[idx]['gaes'] = [[] for _ in range(self.env_config.n_agents)]
+    def _gaes(self) -> None:
+        # TODO: normalise GAEs
+        for idx, episode in enumerate(self.rollout.episodes):
+            self.rollout.episodes[idx]['gaes'] = [[] for _ in range(self.env_config.n_agents)]
             for agent in range(len(episode['states'])):
                 states = torch.stack(episode['states'][agent])
                 state_values = torch.stack(episode['state_values'][agent])
@@ -321,8 +323,7 @@ class PPOLearner():
                     gae = deltas[t] + self.gamma * self.controller.config['lam'] * (1 - dones[t]) * gae
                     gaes.insert(0, gae)
 
-                rollout.episodes[idx]['gaes'][agent] = gaes
-        return rollout
+                self.rollout.episodes[idx]['gaes'][agent] = gaes
 
 
     def _evaluate(self, states: Tensor, next_states: Tensor, actions: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:

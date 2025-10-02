@@ -17,6 +17,7 @@ class MultiAgentRolloutBuffer:
         self.current_episode: Dict[str, List] = {}
         self.n_episodes: int = 0
         self.total_steps: int = 0
+        self.transitions: Dict = {}
 
 
     def reset(self, n_agents) -> None:
@@ -114,7 +115,7 @@ class MultiAgentRolloutBuffer:
         self.n_episodes += 1
 
 
-    def get_transitions(self, shuffle: bool = False, gae: bool = True) -> Dict[str, Tensor]:
+    def get_transitions(self, gae: bool = True) -> None:
         """
         Flatten over all episodes agents and return a tensor for each transition value.
         """
@@ -149,26 +150,7 @@ class MultiAgentRolloutBuffer:
                 for agent_handle in range(self.n_agents):
                     extras[key].extend(episode['extras'][key][agent_handle])
 
-            if shuffle: 
-                extras[key] = [extras[key][i] for i in indices]
-            
-            extras[key] = torch.stack(extras[key])
-
-
-        if shuffle:
-            indices = torch.randperm(len(states))
-            states = [states[i] for i in indices]
-            next_states = [next_states[i] for i in indices]
-            state_values = [state_values[i] for i in indices]
-            next_state_values = [next_state_values[i] for i in indices]
-            actions = [actions[i] for i in indices]
-            log_probs = [log_probs[i] for i in indices]
-            rewards = [rewards[i] for i in indices]
-            dones = [dones[i] for i in indices]
-            if gae:
-                gaes = [gaes[i] for i in indices]
-
-        return_dict: Dict = {'states': torch.stack(states).clone().detach(),
+        transitions_dict: Dict = {'states': torch.stack(states).clone().detach(),
                 'next_states': torch.stack(next_states).clone().detach(),
                 'state_values': torch.stack(state_values).clone().detach(),
                 'next_state_values': torch.stack(next_state_values).clone().detach(),
@@ -179,22 +161,31 @@ class MultiAgentRolloutBuffer:
                 'extras': extras 
                 }
         if gaes:
-            return_dict['gaes'] = torch.stack(gaes).clone().detach()
+            transitions_dict['gaes'] = torch.stack(gaes).clone().detach()
 
-        return return_dict
+        self.transitions = transitions_dict
     
     
-    def get_minibatches(self, batch_size: int, shuffle: bool = False) -> List[Dict[str, Tensor]]:
+    def get_minibatches(self, minibatch_size: int) -> List[Dict[str, Tensor]]:
         """
         Splits the transitions into minibatches of a specified size.
         """
-        transitions = self.get_transitions(shuffle)
+        # remove extras from transition dict as they are not needed for training
+        del self.transitions['extras']
+        self.transitions = self.shuffle_transitions(self.transitions)
         minibatches = []
-        for i in range(0, transitions['states'].size(0), batch_size):
-            minibatch = {key: value[i:i + batch_size] for key, value in transitions.items()}
+        for i in range(0, self.transitions['states'].size(0), minibatch_size):
+            minibatch = {key: value[i:i + minibatch_size] for key, value in self.transitions.items()}
             minibatches.append(minibatch)
         return minibatches
     
+
+    def shuffle_transitions(self, transitions: Dict[str, Union[Tensor, Dict]]) -> None:
+        indices = torch.randperm(len(transitions['states']))
+        for key in transitions.keys():
+            transitions[key] = transitions[key][indices]
+        return transitions    
+
 
     def add_episode(self, episode) -> None: 
         """
