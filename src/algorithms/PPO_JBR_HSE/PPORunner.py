@@ -3,7 +3,7 @@ from torch import Tensor
 from collections import defaultdict
 from typing import Dict, Tuple, List, DefaultDict, Union
 
-from src.utils.obs_utils import tree_observation_dict
+from src.utils.observation.obs_utils import tree_observation_dict
 from src.algorithms.PPO_JBR_HSE.PPOController import PPOController
 from src.algorithms.PPO_JBR_HSE.PPORollout import PPORollout, PPOTransition
 

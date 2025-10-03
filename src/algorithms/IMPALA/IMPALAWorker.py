@@ -9,7 +9,7 @@ import torch.multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.managers import DictProxy
 
-from src.utils.obs_utils import obs_dict_to_tensor
+from src.utils.observation.obs_utils import obs_dict_to_tensor
 from src.configs.EnvConfig import FlatlandEnvConfig
 from src.controllers.PPOController import PPOController
 from src.configs.ControllerConfigs import PPOControllerConfig, LSTMControllerConfig

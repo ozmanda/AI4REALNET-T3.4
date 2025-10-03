@@ -1,7 +1,7 @@
 from src.controllers.PPOController import PPOController
 from src.controllers.LSTMController import LSTMController
 from typing import Dict, List, Union
-from src.utils.obs_utils import calculate_state_size
+from src.utils.observation.obs_utils import calculate_state_size
 
 class ControllerConfig():
     def __init__(self, config_dict: Dict) -> None:

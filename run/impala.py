@@ -14,7 +14,7 @@ if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 from src.utils.file_utils import load_config_file
-from src.utils.obs_utils import calculate_state_size
+from src.utils.observation.obs_utils import calculate_state_size
 
 from src.configs.EnvConfig import FlatlandEnvConfig
 from src.configs.ControllerConfigs import PPOControllerConfig, LSTMControllerConfig

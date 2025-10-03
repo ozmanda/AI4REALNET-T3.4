@@ -11,7 +11,7 @@ from src.configs.ControllerConfigs import PPOControllerConfig
 from src.configs.EnvConfig import FlatlandEnvConfig
 
 from src.utils.file_utils import load_config_file
-from src.utils.obs_utils import calculate_state_size
+from src.utils.observation.obs_utils import calculate_state_size
 
 
 class PPO_Test(unittest.TestCase):

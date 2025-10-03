@@ -14,7 +14,7 @@ from argparse import Namespace
 from src.networks.Attention import MultiHeadAttention
 from src.networks.Recursive import RecursiveLayer
 
-from src.utils.obs_utils import direction_tensor
+from src.utils.observation.obs_utils import direction_tensor
 
 
 class Actor(nn.Module):  

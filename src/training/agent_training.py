@@ -5,7 +5,7 @@ import random
 from flatland.envs.rail_env import RailEnv
 from archive.loader import load_policy
 from yaml import load, safe_load
-from src.utils.obs_utils import normalise_observation
+from src.utils.observation.obs_utils import normalise_observation
 from flatland.envs.rail_env import RailEnvActions
 from collections import deque
 from environments.env_small import small_flatland_env

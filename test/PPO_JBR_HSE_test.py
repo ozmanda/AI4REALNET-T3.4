@@ -10,7 +10,7 @@ from src.algorithms.PPO_JBR_HSE.PPORunner import PPORunner
 from src.configs.ControllerConfigs import PPOControllerConfig
 from flatland.envs.rail_env import RailEnv
 from src.utils.file_utils import load_config_file
-from src.utils.obs_utils import calculate_state_size
+from src.utils.observation.obs_utils import calculate_state_size
 from src.configs.EnvConfig import FlatlandEnvConfig
 from typing import Dict, Tuple
 

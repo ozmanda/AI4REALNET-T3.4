@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from torch import Tensor
 
-from src.utils.obs_utils import get_depth
+from src.utils.observation.obs_utils import get_depth
 
 
 class RecursiveLayer(nn.Module): 
