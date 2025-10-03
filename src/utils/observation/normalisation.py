@@ -1,8 +1,9 @@
-import torch
+﻿import torch
 from torch import Tensor
-from typing import Tuple, Dict
+from typing import Dict
 
 from src.utils.observation.RunningMeanStd import RunningMeanStd
+
 
 class Normalisation:
     def __init__(self, eps: float = 1e-8, clip: bool = True, c: float = 5.0) -> None:
@@ -21,12 +22,12 @@ class Normalisation:
         self.clip: bool = clip
         self.c: float = c
 
-    def update_metrics(self, x: Tensor) -> Dict[str, Tensor]:
+    def update_metrics(self, x: Tensor) -> None:
         """ Update the running mean and variance using a batch of observations and the RunningMeanStd class. """
-        mean, var, count = self.rms.update_batch(x)
-        self.mean = mean.item()
-        self.std = torch.sqrt(var).item()
-        self.count = count
+        self.rms.update_batch(x)
+        self.mean = self.rms.mean.item()
+        self.std = torch.sqrt(self.rms.var + self.eps).item()
+        self.count = self.rms.count
         
     def normalise(self, x: Tensor, clip: bool = None, c: float = None) -> Tensor:
         """
@@ -40,9 +41,10 @@ class Normalisation:
         Returns:
             - x_normalised: Normalised data points (Tensor of shape (batch_size,))
         """
-        if clip:
+        if clip is not None:
             self.clip = clip
-            self.c = c if c else self.c
+        if c is not None:
+            self.c = c
             
         x_normalised = (x - self.mean) / (self.std + self.eps)
         if self.clip:
@@ -50,7 +52,7 @@ class Normalisation:
         return x_normalised
 
 
-class FlatlandNormalisation:
+class FlatlandNormalisation(Normalisation):
     def __init__(self, n_nodes: int, n_features: int, n_agents: int, eps: float = 1e-8, clip: bool = True, c: float = 5.0) -> None:
         """
         Normalisation for Flatland tree observations, holds a RunningMeanStd instance for each type of observation, as described
@@ -70,22 +72,28 @@ class FlatlandNormalisation:
         self.n_agents: int = n_agents
         self.distance_rms: RunningMeanStd = RunningMeanStd(size=1, eps=eps)  
 
-    def normalise(self, x: Tensor, clip: bool = True, c: float = 5.0) -> Tensor:
+    def normalise(self, x: Tensor, clip: bool = None, c: float = None) -> Tensor:
+        if clip is not None:
+            self.clip = clip
+        if c is not None:
+            self.c = c
+
         batchsize = x.shape[0]
-        x = x.resize((batchsize, self.n_nodes, self.n_features))
-        x = self._normalise_distance_metrics(x)
-        x = self._normalise_agent_counts(x)
-        x = self._normalise_speed(x)
-        x = x.resize((batchsize, self.n_nodes * self.n_features))
-        return x
+        x_view = x.view(batchsize, self.n_nodes, self.n_features)
+        x_view = self._normalise_distance_metrics(x_view)
+        x_view = self._normalise_agent_counts(x_view)
+        x_view = self._normalise_speed(x_view)
+        return x_view.view(batchsize, self.n_nodes * self.n_features)
 
     def _normalise_distance_metrics(self, x: Tensor) -> Tensor:
         """ Normalise the distance features (0:7) using the running mean and std. """
         self._update_distance_metrics(x)
+        distance_std = self.distance_rms.std + self.eps
         for i in range(self.n_nodes):
-            x[:, i, :7] = (x[:, i, :7] - self.distance_rms.mean) / (self.distance_rms.std + self.eps)
+            x[:, i, :7] = (x[:, i, :7] - self.distance_rms.mean) / distance_std
             if self.clip:
                 x[:, i, :7] = torch.clamp(x[:, i, :7], -self.c, self.c)
+        return x
 
     def _update_distance_metrics(self, x: Tensor) -> None:
         """
@@ -94,8 +102,8 @@ class FlatlandNormalisation:
         Parameters:
             - x: New data points (Tensor of shape (batch_size, n_nodes, n_features))
         """
-        x = x.reshape(-1, self.n_features)
-        self.distance_rms.update_batch(x[:, :7])
+        x_flat = x.reshape(-1, self.n_features)
+        self.distance_rms.update_batch(x_flat[:, :7])
 
     def _normalise_agent_counts(self, x: Tensor) -> Tensor:
         """

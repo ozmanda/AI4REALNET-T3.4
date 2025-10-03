@@ -32,16 +32,16 @@ class NormalisationTest(unittest.TestCase):
 
     def test_feature_normalisation(self):
         feature_rms = FeatureRunningMeanStd(n_features=self.multi_feature_batch.size(1))
-        mean, var, count = feature_rms.update_batch(self.multi_feature_batch)
+        feature_rms.update_batch(self.multi_feature_batch)
 
-        self.assertEqual(count, self.multi_feature_batch.size(0))
+        self.assertEqual(feature_rms.count, self.multi_feature_batch.size(0))
 
         expected_mean = torch.mean(self.multi_feature_batch, dim=0)
-        self.assertTrue(torch.allclose(mean, expected_mean, atol=1e-6))
+        self.assertTrue(torch.allclose(feature_rms.mean, expected_mean, atol=1e-6))
 
         expected_M2 = ((self.multi_feature_batch - expected_mean) ** 2).sum(dim=0)
         expected_var = expected_M2 / (self.multi_feature_batch.size(0) + feature_rms.eps)
-        self.assertTrue(torch.allclose(var, expected_var, atol=1e-6))
+        self.assertTrue(torch.allclose(feature_rms.var, expected_var, atol=1e-6))
 
 
     def test_tensor_normalisation(self):

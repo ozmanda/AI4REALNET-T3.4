@@ -1,10 +1,10 @@
-import torch
+﻿import torch
 from torch import Tensor
 from typing import Tuple
 
 
 class RunningMeanStd:
-    def __init__(self, size: int = 1, eps: float = 1e-8) -> None:
+    def __init__(self, size: int, eps: float = 1e-8) -> None:
         """
         Update running mean and variance using Welford's algorithm for a single feature. 
 
@@ -15,6 +15,7 @@ class RunningMeanStd:
         self.count: int = 0
         self.mean: Tensor = torch.zeros(size)
         self.var: Tensor = torch.zeros(size)
+        self.std: Tensor = torch.zeros(size)
         self.M2: Tensor = torch.zeros(size)
         self.eps: float = eps
 
@@ -39,6 +40,7 @@ class RunningMeanStd:
         self.M2 += M2_batch + delta ** 2 * self.count * batch_count / new_count
         self.count = new_count
         self.var = self.M2 / (self.count + self.eps)
+        self.std = torch.sqrt(self.var + self.eps)
 
     def update_one(self, x: Tensor) -> None:
         """
@@ -59,6 +61,7 @@ class RunningMeanStd:
         delta2 = x_scalar - self.mean
         self.M2 += delta * delta2
         self.var = self.M2 / (self.count + self.eps)
+        self.std = torch.sqrt(self.var + self.eps)
 
     def update(self, x: Tensor) -> None:
         """ Wrapper for update_one and update_batch, depending on input shape. """
@@ -85,7 +88,8 @@ class FeatureRunningMeanStd(RunningMeanStd):
         """
         super().__init__(n_features, eps)
 
-    def update_batch(self, x: Tensor) -> Tuple[Tensor, Tensor, int]:
+
+    def update_batch(self, x: Tensor) -> None:
         """
         Update running mean and variance for each feature in a tensor.
 
@@ -100,16 +104,16 @@ class FeatureRunningMeanStd(RunningMeanStd):
         batch_count = x.size(0)
         new_count = self.count + batch_count
         batch_mean = torch.mean(x, dim=0)
-        M2_batch = ((x-batch_mean)**2).sum(dim=0)
+        M2_batch = ((x - batch_mean) ** 2).sum(dim=0)
         delta = batch_mean - self.mean
         self.mean += delta * batch_count / new_count
-        self.M2 += M2_batch + delta**2 * self.count * batch_count / new_count
+        self.M2 += M2_batch + delta ** 2 * self.count * batch_count / new_count
         self.count = new_count
         self.var = self.M2 / (self.count + self.eps)
-        return self.mean, self.var, self.count
+        self.std = torch.sqrt(self.var + self.eps)
 
 
-    def update_one(self, x: Tensor) -> Tuple[Tensor, Tensor, int]:
+    def update_one(self, x: Tensor) -> None:
         """
         Update running mean and variance for each feature in a tensor.
 
@@ -126,14 +130,14 @@ class FeatureRunningMeanStd(RunningMeanStd):
         self.mean += delta / self.count
         delta2 = x - self.mean
         self.M2 += delta * delta2
-        self.var = self.M2 / self.count
-        return self.mean, self.var, self.count
-    
+        self.var = self.M2 / (self.count + self.eps)
+        self.std = torch.sqrt(self.var + self.eps)
+
     def update(self, x: Tensor) -> None:
         """ Wrapper for update_one and update_batch, depending on input shape. """
-        if x.dim() == 2:
+        if x.dim() == 1:
             self.update_one(x)
-        elif x.dim() == 3:
+        elif x.dim() == 2:
             self.update_batch(x)
         else:
             raise ValueError("Input tensor must be 1D or 2D.")
