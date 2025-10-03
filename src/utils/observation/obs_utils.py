@@ -187,7 +187,7 @@ def tree_observation_dict(observation: dict, max_depth: int) -> Dict[int, Tensor
     return agent_obs
 
 
-def split_tree(tree: Node, max_depth: int) -> Tensor: # TODO: switch to torch.Tensor
+def split_tree(tree: Node, max_depth: int) -> Tensor:
     ''' Splits the tree observation into an ndarray of features, initial splitting function '''
     features: Tensor = split_features(tree)
 
