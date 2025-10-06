@@ -211,18 +211,6 @@ class PPOLearner():
             pass
 
 
-    def worker_entry(self, queue: mp.Queue) -> None:
-        """
-        Entry point for each worker to run the PPOWorker.
-        """
-        worker = PPOWorker(env_config=self.env_config, 
-                           controller=self.controller,
-                           max_steps=self.max_steps,
-                           device='cpu')
-        rollout = worker.run()
-        queue.put(rollout)
-
-
     def _build_optimizer(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
         if optimiser_config['type'] == 'adam': 
             self.optimiser = optim.Adam(params=chain(self.controller.actor_network.parameters(), self.controller.critic_network.parameters()), lr=float(optimiser_config['learning_rate']))
