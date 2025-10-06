@@ -43,11 +43,9 @@ class PPOController(nn.Module):
         self.entropy_coef: float = config['entropy_coefficient']
 
     def _build_actor(self) -> nn.Module:
-        # TODO: separate from critic to allow for different architectures
         self.actor_network = FeedForwardNN(self.state_size, self.action_size, self.config['actor_config'])
 
     def _build_critic(self) -> nn.Module:
-        # TODO: separate from actor to allow for different architectures
         self.critic_network = FeedForwardNN(self.state_size, 1, self.config['critic_config'])
 
     def init_wandb(self) -> None:
