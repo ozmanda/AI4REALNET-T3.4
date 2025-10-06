@@ -1,6 +1,6 @@
 ﻿import torch
 from torch import Tensor
-from typing import Dict
+from typing import Dict, Tuple
 
 from src.utils.observation.RunningMeanStd import RunningMeanStd
 
@@ -53,7 +53,8 @@ class Normalisation:
 
 
 class FlatlandNormalisation(Normalisation):
-    def __init__(self, n_nodes: int, n_features: int, n_agents: int, eps: float = 1e-8, clip: bool = True, c: float = 5.0) -> None:
+    def __init__(self, n_nodes: int, n_features: int, n_agents: int, env_size: Tuple[int, int], 
+                 eps: float = 1e-8, clip: bool = True, c: float = 5.0) -> None:
         """
         Normalisation for Flatland tree observations, holds a RunningMeanStd instance for each type of observation, as described
         in the Flatland documentation: https://flatland-association.github.io/flatland-book/environment/observation_builder/provided_observations.html
@@ -70,40 +71,40 @@ class FlatlandNormalisation(Normalisation):
         self.n_nodes: int = n_nodes
         self.n_features: int = n_features
         self.n_agents: int = n_agents
-        self.distance_rms: RunningMeanStd = RunningMeanStd(size=1, eps=eps)  
+        self.distance_rms: RunningMeanStd = RunningMeanStd(size=1, eps=eps)
+        self.max_distance: int = env_size[0] * env_size[1]  # (width, height)
 
     def normalise(self, x: Tensor, clip: bool = None, c: float = None) -> Tensor:
+        """
+        Normalise a batch of observations using the running mean and std for distance features, and normalising the number of agents features using the
+        total number of agents in the environment. Assumes an 3D input shape of (batch_size, n_agents, n_nodes * n_features).
+        """
         if clip is not None:
             self.clip = clip
         if c is not None:
             self.c = c
 
         batchsize = x.shape[0]
-        x_view = x.view(batchsize, self.n_nodes, self.n_features)
-        x_view = self._normalise_distance_metrics(x_view)
-        x_view = self._normalise_agent_counts(x_view)
-        x_view = self._normalise_speed(x_view)
-        return x_view.view(batchsize, self.n_nodes * self.n_features)
+        x = x.view(batchsize, self.n_agents, self.n_nodes, self.n_features)
+        x = self._normalise_distance_metrics(x)
+        x = self._normalise_agent_counts(x)
+        x = self._normalise_speed(x)
+        return x.view(batchsize, self.n_agents, self.n_nodes * self.n_features)
 
     def _normalise_distance_metrics(self, x: Tensor) -> Tensor:
         """ Normalise the distance features (0:7) using the running mean and std. """
-        self._update_distance_metrics(x)
-        distance_std = self.distance_rms.std + self.eps
-        for i in range(self.n_nodes):
-            x[:, i, :7] = (x[:, i, :7] - self.distance_rms.mean) / distance_std
-            if self.clip:
-                x[:, i, :7] = torch.clamp(x[:, i, :7], -self.c, self.c)
+        x[:, :, :, :7] = x[:, :, :, :7] / self.max_distance  # scale distances to [0, 1]
         return x
 
-    def _update_distance_metrics(self, x: Tensor) -> None:
-        """
-        Update the running mean and variance for distance features (0-6) using a batch of observations.
-
-        Parameters:
-            - x: New data points (Tensor of shape (batch_size, n_nodes, n_features))
-        """
-        x_flat = x.reshape(-1, self.n_features)
-        self.distance_rms.update_batch(x_flat[:, :7])
+    # TODO: finish implementing running mean and std for distance metrics over all workers
+    # def _normalise_distance_metrics(self, x: Tensor) -> Tensor:
+    #     """ Normalise the distance features (0:7) using the running mean and std. """
+    #     distance_std = self.distance_rms.std + self.eps
+    #     for i in range(self.n_nodes):
+    #         x[:, :, i, :7] = (x[:, :, i, :7] - self.distance_rms.mean) / distance_std
+    #         if self.clip:
+    #             x[:, :, i, :7] = torch.clamp(x[:, :, i, :7], -self.c, self.c)
+    #     return x
 
     def _normalise_agent_counts(self, x: Tensor) -> Tensor:
         """

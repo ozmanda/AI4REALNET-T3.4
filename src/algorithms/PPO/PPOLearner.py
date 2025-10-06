@@ -15,20 +15,19 @@ import torch.multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.managers import DictProxy
 
-from src.algorithms.PPO.PPOWorker import PPOWorker
-from src.configs.ControllerConfigs import PPOControllerConfig
-from src.controllers.PPOController import PPOController
-from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
-from src.algorithms.loss import value_loss, value_loss_with_IS, policy_loss
-
-from flatland.envs.rail_env import RailEnv
+from src.configs.ControllerConfigs import ControllerConfig
 from src.configs.EnvConfig import FlatlandEnvConfig
+from src.algorithms.PPO.PPOWorker import PPOWorker
+from src.algorithms.loss import value_loss, value_loss_with_IS, policy_loss
+from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
+from src.utils.observation.RunningMeanStd import RunningMeanStd
+
 
 class PPOLearner():
     """
     Learner class for the PPO Algorithm.
     """
-    def __init__(self, controller_config: PPOControllerConfig, learner_config: Dict, env_config: FlatlandEnvConfig, device: str = None) -> None:
+    def __init__(self, controller_config: ControllerConfig, learner_config: Dict, env_config: FlatlandEnvConfig, device: str = None) -> None:
         # Initialise environment and set controller / learning parameters
         self.env_config = env_config
         self._init_learning_params(learner_config)
@@ -47,7 +46,10 @@ class PPOLearner():
         wandb.watch(self.controller.actor_network, log='all')
         wandb.watch(self.controller.critic_network, log='all')
 
-    def _init_controller(self, config: PPOControllerConfig) -> None:
+        # Initialise running mean and std for observation normalisation
+        self.distance_rms: RunningMeanStd = RunningMeanStd(size=1)
+
+    def _init_controller(self, config: ControllerConfig) -> None:
         self.controller_config = config
         self.n_nodes: int = config.config_dict['n_nodes']
         self.state_size: int = config.config_dict['state_size']
@@ -87,17 +89,17 @@ class PPOLearner():
         self.rollout_queue: mp.Queue = mp.Queue()
         # self.weights_queue: mp.Queue = mp.Queue()
         self.barrier = mp.Barrier(self.n_workers + 1)  # +1 for the learner process
-        self.manager = mp.Manager()
         self.done_event: Event = mp.Event()
+        # self.observation_queue: mp.Queue = mp.Queue()
+        self.manager = mp.Manager()
+        self.shared_weights: DictProxy = self.manager.dict()
+        # self.shared_normalisation: DictProxy = self.manager.dict()
 
 
     def sync_run(self) -> None:
         """
         Synchronous PPO training run.
         """
-        # Broadcast initial weights to all workers, one for each worker, ensuring they start with the same model parameters
-        self.shared_weights: DictProxy = self.manager.dict()
-
         # initialise learning rollout
         self.rollout = MultiAgentRolloutBuffer(n_agents=self.env_config.n_agents)
 
@@ -111,6 +113,8 @@ class PPOLearner():
                                logging_queue=self.logging_queue,
                                rollout_queue=self.rollout_queue,
                                shared_weights=self.shared_weights,
+                            #    shared_normalisation=self.shared_normalisation,
+                            #    observation_queue=self.observation_queue,
                                barrier=self.barrier,
                                done_event=self.done_event,
                                env_config=self.env_config,
@@ -120,6 +124,7 @@ class PPOLearner():
             workers.append(worker)
             worker.start()
         self._broadcast_controller_state() # initial weight broadcast
+        # self._initialise_normalisation()
 
         # gather rollouts and update when enough data is collected
         while self.completed_updates < self.target_updates:
@@ -134,6 +139,7 @@ class PPOLearner():
                 except Exception as e:
                     print(f"Error: {e}")
                     continue
+            # self._update_normalisation()
 
             # add the episode to the current rollout buffer
             if self.rollout.total_steps >= self.samples_per_update:
@@ -325,3 +331,33 @@ class PPOLearner():
         state_values = self.controller.critic_network(states)
         next_state_values = self.controller.critic_network(next_states)
         return log_probs, entropy, state_values, next_state_values
+    
+    # TODO: finish implementing running mean and std calculation over all workers
+    # def _initialise_normalisation(self) -> None:
+    #     """
+    #     Update the running mean and std for distance metrics and push to the shared dictionary for workers to access.
+    #     """
+    #     self._gather_observations()
+    #     self.shared_normalisation['distance_rms'] = self.distance_rms
+    #     print("Learner waiting at barrier after normalsation push...")
+    #     self.barrier.wait()
+    
+    # def _gather_observations(self) -> None:
+    #     """
+    #     Gather distance observations from all workers to update the running mean and std.
+    #     """
+    #     print("Learner waiting at barrier before gathering observations...")
+    #     self.barrier.wait()  # wait for all workers to push their statistics
+    #     for _ in range(self.n_workers): 
+    #         worker_obs = self.observation_queue.get()
+    #         print("Learner calculating rms update...")
+    #         self.distance_rms.update_batch(worker_obs)
+        
+    # def _update_normalisation(self) -> None:
+    #     """
+    #     Update the running mean and std for distance metrics and push to the shared dictionary for workers to access.
+    #     """
+    #     self._gather_observations()
+    #     self.shared_normalisation['distance_rms'] = self.distance_rms
+    #     print("Learner waiting at barrier after normalsation push...")
+    #     self.barrier.wait()

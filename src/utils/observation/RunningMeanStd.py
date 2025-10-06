@@ -4,7 +4,7 @@ from typing import Tuple
 
 
 class RunningMeanStd:
-    def __init__(self, size: int, eps: float = 1e-8) -> None:
+    def __init__(self, size: int=1, eps: float = 1e-8) -> None:
         """
         Update running mean and variance using Welford's algorithm for a single feature. 
 
@@ -31,6 +31,7 @@ class RunningMeanStd:
             - var: Updated variance (Tensor of shape (1,))
             - count: Updated count of data points (int)
         """
+        x = x.reshape(-1)
         batch_count = x.size(0)
         new_count = self.count + batch_count
         batch_mean = torch.mean(x)
@@ -71,6 +72,23 @@ class RunningMeanStd:
             self.update_batch(x)
         else:
             raise ValueError("Input tensor must be 1D or 2D.")
+        
+    def update_with_metrics(self, batch_mean: float, batch_M2: float, batch_count: int) -> None:
+        """
+        Update running mean and variance using pre-computed batch statistics.
+
+        Parameters:
+            - mean: Mean of the new batch (float)
+            - var: Variance of the new batch (float)
+            - count: Count of the new batch (int)
+        """
+        new_count = self.count + batch_count
+        delta = batch_mean - self.mean
+        self.mean += delta * batch_count / new_count
+        self.M2 += batch_M2 + delta ** 2 * self.count * batch_count / new_count
+        self.count = new_count
+        self.var = self.M2 / (self.count + self.eps)
+        self.std = torch.sqrt(self.var + self.eps)
 
 
 class FeatureRunningMeanStd(RunningMeanStd): 
@@ -141,3 +159,7 @@ class FeatureRunningMeanStd(RunningMeanStd):
             self.update_batch(x)
         else:
             raise ValueError("Input tensor must be 1D or 2D.")
+
+class FlatlandNormMetrics:
+    def __init__(self):
+        self.observation = RunningMeanStd()
