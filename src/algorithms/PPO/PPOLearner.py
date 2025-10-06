@@ -249,18 +249,18 @@ class PPOLearner():
             self.optimiser.zero_grad()
             total_loss.backward()
             self.optimiser.step()
-            self.update_step += 1
 
             # add metrics
-            losses['policy_loss'].append(actor_loss.mean().item())
-            losses['value_loss'].append(critic_loss.mean().item())
+            losses['policy_loss'].append(actor_loss.item())
+            losses['value_loss'].append(critic_loss.item())
 
-            # Log losses to wandb
-            wandb.log({
-                'update_step': self.update_step,
-                'train/policy_loss': np.mean(losses['policy_loss']),
-                'train/value_loss': np.mean(losses['value_loss'])
-            })
+        self.update_step += 1
+        # Log losses to wandb
+        wandb.log({
+            'update_step': self.update_step,
+            'train/policy_loss': np.mean(losses['policy_loss']),
+            'train/value_loss': np.mean(losses['value_loss'])
+        })
         return losses
     
     
