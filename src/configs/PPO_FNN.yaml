@@ -7,16 +7,15 @@ max_optimisation_steps: 1000
 
 # Learner Config
 learner_config: 
-    run_name: "FNN_run1"
+    run_name: "FNN_run6"
     max_steps: 10000
     max_steps_per_episode: 400
-    target_updates: 100
-    samples_per_update: 256
-    training_iterations: 4
-    batch_size: 32
+    target_updates: 1000
+    samples_per_update: 512
+    batch_size: 256
     IS: true
     log_interval: 10
-    n_workers: 1
+    n_workers: 6
     optimiser_config:
       type: "adam"
       learning_rate: 1e-5
@@ -25,8 +24,6 @@ learner_config:
 # Controller Config
 controller_config: 
     action_size: 5
-    neighbour_depth: 2
-    batch_size: 32
     gae_horizon: 16
     n_epochs_update: 3
     gamma: 0.995
@@ -44,7 +41,6 @@ controller_config:
       - 128
     critic_config:
       type: "FNN"
-      hidden_size: 128
       layer_sizes: 
       - 256
       - 128
@@ -54,7 +50,7 @@ controller_config:
 environment_config:
     height: 30
     width: 30
-    n_agents: 8
+    n_agents: 4
     n_cities: 4
     grid_distribution: false
     max_rails_between_cities: 2
