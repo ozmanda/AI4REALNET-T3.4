@@ -12,8 +12,8 @@ from flatland.core.grid.grid4_utils import get_new_position
 from flatland.envs.fast_methods import fast_position_equal, fast_argmax, fast_count_nonzero
 
 # sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from src.utils.flatland_railway_extension.RailroadSwitchAnalyser import RailroadSwitchAnalyser
-from src.utils.flatland_railway_extension.RailroadSwitchCluster import RailroadSwitchCluster
+from src.utils.graph.flatland_railway_extension.RailroadSwitchAnalyser import RailroadSwitchAnalyser
+from src.utils.graph.flatland_railway_extension.RailroadSwitchCluster import RailroadSwitchCluster
 from src.utils.graph.PathGenerator import PathGenerator
 from flatland.envs.rail_env_action import RailEnvActions
 
