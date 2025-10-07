@@ -38,7 +38,7 @@ class PPOLearner():
         self._init_queues()
 
         # Initialise the optimiser
-        self.optimizer: optim.Optimizer = self._build_optimizer(learner_config['optimiser_config'])
+        self.optimizer: optim.optimizer.Optimizer = self._build_optimizer(learner_config['optimiser_config'])
         self.update_step: int = 0
 
         # Initialise wandb for logging

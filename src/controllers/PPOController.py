@@ -18,7 +18,7 @@ class PPOController(nn.Module):
     Basic Controller for Proximal Policy Optimization (PPO) algorithm.
     Implements simple Feed Forward NNs for the actor and critic networks. 
     """
-    def __init__(self, config: Dict, agent_ID: Union[int, str] = None):
+    def __init__(self, config: Dict, agent_ID: Union[int, str] = ''):
         super(PPOController, self).__init__()
         self.config: Dict = config
         if agent_ID:
@@ -42,10 +42,10 @@ class PPOController(nn.Module):
         self.value_loss_coef: float = config['value_loss_coefficient']
         self.entropy_coef: float = config['entropy_coefficient']
 
-    def _build_actor(self) -> nn.Module:
+    def _build_actor(self) -> None:
         self.actor_network = FeedForwardNN(self.state_size, self.action_size, self.config['actor_config'])
 
-    def _build_critic(self) -> nn.Module:
+    def _build_critic(self) -> None:
         self.critic_network = FeedForwardNN(self.state_size, 1, self.config['critic_config'])
 
     def init_wandb(self) -> None:
@@ -117,7 +117,7 @@ class PPOController(nn.Module):
         return self.critic_network(states)
 
 
-    def sample_action(self, states: torch.Tensor) -> torch.Tensor:
+    def sample_action(self, states: torch.Tensor) -> Tuple[Tensor, Tensor, Tensor, None]:
         """
         Get the action from the actor network based on the current state.
         
@@ -137,7 +137,7 @@ class PPOController(nn.Module):
         return actions, log_prob, values, None # extras = None (compatibility with other controllers)
     
 
-    def select_action(self, state: torch.Tensor) -> torch.Tensor:
+    def select_action(self, state: Tensor) -> Tuple[Tensor, Tensor]:
         """
         Select the best action based on the current state using the actor network.
         

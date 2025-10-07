@@ -8,6 +8,9 @@ class ControllerConfig():
         self.config_dict = config_dict
         self.type = config_dict.get('type', 'FNN')
 
+    def create_controller(self):
+        raise NotImplementedError("This method should be overridden by subclasses.")
+
 class PPOControllerConfig(ControllerConfig): 
     def __init__(self, config_dict: Dict[str, Union[Dict, str, float, int]]) -> None:
         super().__init__(config_dict)
