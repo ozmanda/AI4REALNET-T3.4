@@ -65,7 +65,6 @@ class PPOLearner():
         self.samples_per_update: int = learner_config['samples_per_update']
         self.completed_updates: int = 0
         self.total_steps: int = 0
-        self.iterations: int = learner_config['training_iterations']
         self.batch_size: int = learner_config['batch_size']
         self.importance_sampling: bool = learner_config['IS']
         self.episodes_infos: List[Dict] = []
