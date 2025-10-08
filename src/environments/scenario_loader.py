@@ -5,7 +5,7 @@ import numpy as np
 from flatland.envs.rail_env import RailEnv
 from flatland.envs.timetable_utils import Line, Timetable
 from flatland.core.transition_map import GridTransitionMap
-from flatland.core.grid.rail_env_grid import RailEnvTransitions
+from flatland.envs.grid.rail_env_grid import RailEnvTransitions
 
 
 def rail_generator_from_grid_map(grid_map, level_free_positions):
