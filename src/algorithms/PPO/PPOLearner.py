@@ -100,7 +100,8 @@ class PPOLearner():
         Synchronous PPO training run.
         """
         # initialise learning rollout
-        self.rollout = MultiAgentRolloutBuffer(n_agents=self.env_config.n_agents)
+        n_agents = self.env_config.get_num_agents()
+        self.rollout = MultiAgentRolloutBuffer(n_agents=n_agents)
 
         # create and start workers
         # TODO: add device specification for the workers
