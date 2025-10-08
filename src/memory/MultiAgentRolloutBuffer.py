@@ -43,8 +43,10 @@ class MultiAgentRolloutBuffer:
             'extras': {},
             'gaes': [[] for _ in range(self.n_agents)],
             'episode_length': [0 for _ in range(self.n_agents)],
-            'episode_reward': [0.0 for _ in range(self.n_agents)],
+            'total_episode_reward': [0.0 for _ in range(self.n_agents)],
+            'per_agent_average_reward': [0.0 for _ in range(self.n_agents)],
             'average_episode_length': 0,
+            'total_reward': 0.0,
             'average_episode_reward': 0.0
         }
 
@@ -101,14 +103,14 @@ class MultiAgentRolloutBuffer:
         for agent in range(self.n_agents):
             self.current_episode['episode_length'][agent] += len(self.current_episode['states'][agent])
             self.current_episode['total_episode_reward'][agent] = sum(self.current_episode['rewards'][agent])
-            self.current_episode['average_episode_reward'][agent] = self.current_episode['total_episode_reward'][agent] / len(self.current_episode['rewards'][agent])
+            self.current_episode['per_agent_average_reward'][agent] = self.current_episode['total_episode_reward'][agent] / len(self.current_episode['rewards'][agent])
 
         self.current_episode['average_episode_length'] = np.sum(self.current_episode['episode_length']) / self.n_agents
         self.current_episode['total_reward'] = sum(self.current_episode['total_episode_reward'])  
-        self.current_episode['average_reward'] = self.current_episode['total_reward'] / self.n_agents
+        self.current_episode['average_episode_reward'] = self.current_episode['total_reward'] / self.n_agents
 
         if verbose > 0:
-            print(f"\nEpisode {self.n_episodes + 1} - Average Reward: {self.current_episode['average_reward']}\n")
+            print(f"\nEpisode {self.n_episodes + 1} - Average Reward: {self.current_episode['average_episode_reward']}\n")
 
         self.episodes.append(self.current_episode)
         self.total_steps += np.sum(self.current_episode['episode_length'])

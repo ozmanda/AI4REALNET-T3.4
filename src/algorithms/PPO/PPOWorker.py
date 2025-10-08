@@ -143,7 +143,7 @@ class PPOWorker(mp.Process):
                 self.logging_queue.put({'worker_id': self.worker_id,
                                         'episode': self.total_episodes,
                                         'episode/total_reward': self.rollout.episodes[-1]['total_reward'],
-                                        'episode/average_reward': self.rollout.episodes[-1]['average_reward'],
+                                        'episode/average_reward': self.rollout.episodes[-1]['average_episode_reward'],
                                         'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})
                 if not self.done_event.is_set():
                     self._wait_for_weights()
