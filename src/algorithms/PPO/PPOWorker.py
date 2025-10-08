@@ -142,7 +142,8 @@ class PPOWorker(mp.Process):
                 self.rollout_queue.put(self.rollout.episodes[-1])
                 self.logging_queue.put({'worker_id': self.worker_id,
                                         'episode': self.total_episodes,
-                                        'episode/reward': self.rollout.episodes[-1]['average_episode_reward'],
+                                        'episode/total_reward': self.rollout.episodes[-1]['total_reward'],
+                                        'episode/average_reward': self.rollout.episodes[-1]['average_reward'],
                                         'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})
                 if not self.done_event.is_set():
                     self._wait_for_weights()
@@ -151,7 +152,7 @@ class PPOWorker(mp.Process):
         """
         Normalize the observation using the FlatlandNormalisation class.
         """
-        normalized_observation = self.flatland_normalisation.normalise(observation.resize(1, *observation.shape))
+        normalized_observation = self.flatland_normalisation.normalise(observation.unsqueeze(0))
         return normalized_observation.squeeze(0)
 
 

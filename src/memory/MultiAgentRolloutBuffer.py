@@ -85,7 +85,7 @@ class MultiAgentRolloutBuffer:
                     self.current_episode['extras'] = {key: [[] for _ in range(self.n_agents)] for key in extras.keys()}
                 for key in extras.keys():
                     self.current_episode['extras'][key][agent_handle].append(extras[key][agent_handle])
-        self.total_steps += 1
+        # self.total_steps += 1
 
 
     def add_episode(self, episode: Dict[str, List]) -> None:
@@ -100,14 +100,15 @@ class MultiAgentRolloutBuffer:
     def end_episode(self, verbose: int = 0) -> None:
         for agent in range(self.n_agents):
             self.current_episode['episode_length'][agent] += len(self.current_episode['states'][agent])
-            self.current_episode['episode_reward'][agent] = sum(self.current_episode['rewards'][agent]) / len(self.current_episode['rewards'][agent])
+            self.current_episode['total_episode_reward'][agent] = sum(self.current_episode['rewards'][agent])
+            self.current_episode['average_episode_reward'][agent] = self.current_episode['total_episode_reward'][agent] / len(self.current_episode['rewards'][agent])
 
         self.current_episode['average_episode_length'] = np.sum(self.current_episode['episode_length']) / self.n_agents
-        self.current_episode['total_reward'] = sum(self.current_episode['episode_reward'])  
-        self.current_episode['average_episode_reward'] = self.current_episode['total_reward'] / self.n_agents
+        self.current_episode['total_reward'] = sum(self.current_episode['total_episode_reward'])  
+        self.current_episode['average_reward'] = self.current_episode['total_reward'] / self.n_agents
 
         if verbose > 0:
-            print(f"\nEpisode {self.n_episodes + 1} - Average Reward: {self.current_episode['average_episode_reward']}\n")
+            print(f"\nEpisode {self.n_episodes + 1} - Average Reward: {self.current_episode['average_reward']}\n")
 
         self.episodes.append(self.current_episode)
         self.total_steps += np.sum(self.current_episode['episode_length'])

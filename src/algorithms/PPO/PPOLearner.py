@@ -207,10 +207,11 @@ class PPOLearner():
                 log_info = self.logging_queue.get_nowait()
                 worker_id = log_info['worker_id']
                 wandb.log({
-                    f'worker_{worker_id}/episode_reward': log_info['episode/reward'],
-                    f'worker_{worker_id}/episode_length': log_info['episode/average_length'],
+                    f'worker_{worker_id}/total_reward': log_info['episode/total_reward'],
+                    f'worker_{worker_id}/average_reward': log_info['episode/average_reward'],
+                    f'worker_{worker_id}/average_episode_length': log_info['episode/average_length'],
                     # global aggregated metrics
-                    'episode/average_reward': log_info['episode/reward'],
+                    'episode/total_reward': log_info['episode/total_reward'],
                 })
         except queue.Empty:
             pass
