@@ -18,7 +18,7 @@ learner_config:
     n_workers: 6
     optimiser_config:
       type: "adam"
-      learning_rate: 1e-5
+      learning_rate: 3e-4
     
 
 # Controller Config
