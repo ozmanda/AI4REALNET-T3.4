@@ -117,7 +117,7 @@ class FlatlandNormalisation(Normalisation):
             - x_normalised: Normalised data points (Tensor of shape (batch_size, n_nodes, n_features))
         """
         x[:, :, :, 7:10] = x[:, :, :, 7:10] / self.n_agents   # TODO: check that this works the expected way
-        x[:, :, 11] = x[:, :, 11] / self.n_agents
+        x[:, :, :, 11] = x[:, :, :, 11] / self.n_agents
         return x
     
     def _normalise_speed(self, x: Tensor) -> Tensor:
