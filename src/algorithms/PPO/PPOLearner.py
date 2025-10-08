@@ -299,6 +299,7 @@ class PPOLearner():
 
     def _gaes(self) -> None:
         # TODO: normalise GAEs
+        all_gaes: List[Tensor] = []
         for idx, episode in enumerate(self.rollout.episodes):
             self.rollout.episodes[idx]['gaes'] = [[] for _ in range(self.env_config.n_agents)]
             for agent in range(len(episode['states'])):
@@ -315,9 +316,27 @@ class PPOLearner():
                 gae = 0
                 for t in reversed(range(len(rewards))):
                     gae = deltas[t] + self.gamma * self.controller.config['lam'] * (1 - dones[t]) * gae
-                    gaes.insert(0, gae)
+                    gaes.insert(0, gae.detach())
 
-                self.rollout.episodes[idx]['gaes'][agent] = gaes
+                gae_tensor = torch.stack(gaes)
+                self.rollout.episodes[idx]['gaes'][agent] = gae_tensor
+                all_gaes.append(gae_tensor)
+
+        self._normalise_gaes(all_gaes)
+
+    
+    def _normalise_gaes(self, gaes: List[Tensor]) -> None:
+        if not gaes:
+            return
+        stacked_gaes = torch.cat([gae.flatten() for gae in gaes])
+        gae_mean = stacked_gaes.mean()
+        gae_std = stacked_gaes.std().clamp_min(1e-8)  # avoid division by zero
+        for idx, episode in enumerate(self.rollout.episodes):
+            for agent in range(len(episode['gaes'])):
+                gae_tensor = episode['gaes'][agent]
+                if isinstance(gae_tensor, list):
+                    gae_tensor = torch.stack(gae_tensor)
+                self.rollout.episodes[idx]['gaes'][agent] = (gae_tensor - gae_mean) / gae_std
 
 
     def _evaluate(self, states: Tensor, next_states: Tensor, actions: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
