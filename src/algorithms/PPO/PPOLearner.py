@@ -39,7 +39,7 @@ class PPOLearner():
 
         # Initialise the optimiser
         self.optimizer: optim.optimizer.Optimizer = self._build_optimizer(learner_config['optimiser_config'])
-        self.update_step: int = 0
+        self.epochs: int = 0
 
         # Initialise wandb for logging
         self._init_wandb(learner_config)
@@ -69,6 +69,7 @@ class PPOLearner():
         self.importance_sampling: bool = learner_config['IS']
         self.episodes_infos: List[Dict] = []
         self.total_episodes: int = 0
+        self.n_epochs_per_update: int = learner_config['n_epochs_update']
 
     def _init_wandb(self, learner_config: Dict) -> None:
         """
@@ -77,7 +78,7 @@ class PPOLearner():
         self.run_name = learner_config['run_name']
         wandb.init(project='AI4REALNET-T3.4', entity='CLS-FHNW', config=learner_config, reinit=True)
         wandb.run.define_metric('episodes/*', step_metric='episode')
-        wandb.run.define_metric('train/*', step_metric='update_step')
+        wandb.run.define_metric('train/*', step_metric='epoch')
         wandb.run.name = f"{self.run_name}_PPO"
         wandb.watch(self.controller.actor_network, log='all')
         wandb.watch(self.controller.critic_network, log='all')
@@ -197,7 +198,7 @@ class PPOLearner():
         controller_state = (self.controller.actor_network.state_dict(),
                             self.controller.critic_network.state_dict())
         self.shared_weights['controller_state'] = controller_state
-        self.shared_weights['update_step'] = self.update_step
+        self.shared_weights['update_step'] = self.completed_updates
         self.barrier.wait()  # wait for all workers to acknowledge the new weights
 
 
@@ -234,34 +235,33 @@ class PPOLearner():
             'value_loss': []
         }
 
-        # forward pass through the actor network to get actions and log probabilities
         self._gaes()
         self.rollout.get_transitions(gae=True) # TODO: check that this is done correctly everywhere
 
-        for minibatch in self.rollout.get_minibatches(self.batch_size): # TODO: check that this is the right batchsize
-            new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(minibatch['states'], minibatch['next_states'], minibatch['actions'])
-            minibatch['new_log_probs'] = new_log_probs
-            minibatch['new_state_values'] = new_state_values.squeeze(-1)
-            minibatch['new_next_state_values'] = new_next_state_values.squeeze(-1)
-            minibatch['entropy'] = entropy
+        for _ in range(self.n_epochs_per_update):   
+            for minibatch in self.rollout.get_minibatches(self.batch_size): # TODO: check that this is the right batchsize
+                new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(minibatch['states'], minibatch['next_states'], minibatch['actions'])
+                minibatch['new_log_probs'] = new_log_probs
+                minibatch['new_state_values'] = new_state_values.squeeze(-1)
+                minibatch['new_next_state_values'] = new_next_state_values.squeeze(-1)
+                minibatch['entropy'] = entropy
 
-            total_loss, actor_loss, critic_loss = self._loss(minibatch)
+                total_loss, actor_loss, critic_loss = self._loss(minibatch)
 
-            self.optimiser.zero_grad()
-            total_loss.backward()
-            self.optimiser.step()
+                self.optimiser.zero_grad()
+                total_loss.backward()
+                self.optimiser.step()
 
-            # add metrics
-            losses['policy_loss'].append(actor_loss.item())
-            losses['value_loss'].append(critic_loss.item())
+                # add metrics
+                losses['policy_loss'].append(actor_loss.item())
+                losses['value_loss'].append(critic_loss.item())
+            self.epochs += 1
+            wandb.log({
+                'epoch': self.epochs,
+                'train/policy_loss': np.mean(losses['policy_loss']),
+                'train/value_loss': np.mean(losses['value_loss'])
+            })
 
-        self.update_step += 1
-        # Log losses to wandb
-        wandb.log({
-            'update_step': self.update_step,
-            'train/policy_loss': np.mean(losses['policy_loss']),
-            'train/value_loss': np.mean(losses['value_loss'])
-        })
         return losses
     
     
