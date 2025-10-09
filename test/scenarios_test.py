@@ -31,7 +31,8 @@ class TestScenarioLoader(unittest.TestCase):
 
     def test_single_scenario(self):
         """ Test the scenario loading for a single scenario. """
-        scenario = 'simple_ordering'
+        print(os.getcwd())
+        scenario = 'src/environments/simple_ordering.json'
         env = load_scenario_from_json(scenario)
         self.assertIsNotNone(env, f"Failed to load scenario: {scenario}")
         env.reset()
