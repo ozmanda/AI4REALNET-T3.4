@@ -55,8 +55,18 @@ class PPO_Test(unittest.TestCase):
             torch.backends.cudnn.benchmark = False
 
 
-    def test_FNN(self): 
-        config_path: str = 'src/configs/ppo_config.yaml'
+    def test_FNN_random_env(self): 
+        config_path: str = 'src/configs/PPO_FNN.yaml'
+        self.setup(config_path)
+        self.train_ppo(random_seed = 42,
+                       controller_config = self.controller_config,
+                       learner_config = self.learner_config,
+                       env_config = self.env_config,
+                       device = 'cpu')
+        
+
+    def test_FNN_scenario(self): 
+        config_path: str = 'src/configs/PPO_FNN_Scenario.yaml'
         self.setup(config_path)
         self.train_ppo(random_seed = 42,
                        controller_config = self.controller_config,
