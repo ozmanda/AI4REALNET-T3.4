@@ -4,6 +4,10 @@ from torch import Tensor
 from typing import Tuple, Dict, Union
 
 from flatland.envs.rewards import Rewards
+from flatland.envs.agent_utils import EnvAgent
+from flatland.envs.distance_map import DistanceMap
+from flatland.envs.step_utils.env_utils import AgentTransitionData
+from flatland.envs.step_utils.states import TrainState
 
 
 class SimpleReward(Rewards[int]):
@@ -16,7 +20,7 @@ class SimpleReward(Rewards[int]):
     def reset(self):
         pass
 
-    def step_reward(self, handle: int) -> int:
+    def step_reward(self, agent: EnvAgent, agent_transition_data: AgentTransitionData, distance_map: DistanceMap, elapsed_steps: int) -> int:
         """
         Get the reward for a specific agent based on its current state.
 
@@ -26,14 +30,27 @@ class SimpleReward(Rewards[int]):
         Returns:
             float: The reward for the agent.
         """
-        # TODO: Implement the logic to compute the reward based on the agent's state
-        pass
+        reward = 0
+        if agent.state == TrainState.DONE:
+            reward = 1
+        elif agent.state_machine.previous_state == TrainState.MOVING and agent.state == TrainState.STOPPED and not agent_transition_data.state_transition_signal.stop_action_given:
+            # collision
+            reward = -1
+        else:
+            reward = 0
+        return reward
 
-    def end_of_episode_reward(self, agent, distance_map, elapsed_steps):
+    def end_of_episode_reward(self, agent: EnvAgent):
         """
-        Get the reward for a specific agent at the end of an episode.
+        Simple end-of-episode reward function: either the agent has reached its target (+1) or not (-1).
         """
-        pass
+        reward = 0
+        if agent.state == TrainState.DONE:
+            reward = 1
+        else:
+            reward = -1
+        return reward
+        
 
     def cumulate(self, *rewards):
         pass
@@ -61,5 +78,3 @@ def compute_discounted_reward_per_agent(rewards: Tensor, gamma: float) -> Tensor
         future_reward = returns.clone()
 
     return discounted_rewards
-
-

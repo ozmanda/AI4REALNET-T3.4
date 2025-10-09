@@ -5,6 +5,7 @@ from flatland.envs.rail_generators import sparse_rail_generator
 from flatland.envs.predictions import ShortestPathPredictorForRailEnv
 from flatland.envs.observations import TreeObsForRailEnv, GlobalObsForRailEnv
 from flatland.envs.malfunction_generators import MalfunctionParameters, ParamMalfunctionGen
+from flatland.envs.rewards import Rewards, DefaultRewards, BasicMultiObjectiveRewards, PunctualityRewards
 
 from src.environments.scenario_loader import load_scenario_from_json, get_num_agents
 
@@ -86,6 +87,24 @@ class FlatlandEnvConfig():
             self.observation_builder = GlobalObsForRailEnv()
         else:
             raise ValueError(f"Unknown observation builder type: {self.observation_builder_config['type']}")
+        
+
+    def get_reward_function(self, reward_config: str) -> Rewards:
+        if reward_config: 
+            if reward_config == 'simple':
+                from src.utils.reward_utils import SimpleReward
+                return SimpleReward()
+            elif reward_config == 'default':
+                return DefaultRewards()
+            elif reward_config == 'basic_multi_objective':
+                return BasicMultiObjectiveRewards()
+            elif reward_config == 'punctuality':
+                return PunctualityRewards()
+            else:
+                raise ValueError(f"Unknown reward config: {reward_config}")
+        else:
+            return DefaultRewards()
+
     
     def get_num_agents(self) -> int:
         if self.scenario:
