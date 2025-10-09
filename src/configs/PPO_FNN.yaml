@@ -7,29 +7,29 @@ max_optimisation_steps: 1000
 
 # Learner Config
 learner_config: 
-    run_name: "FNN_run6"
+    run_name: "FNN_small_run3"
     max_steps: 10000
     max_steps_per_episode: 400
-    target_updates: 1000
+    target_updates: 100
     samples_per_update: 512
     batch_size: 256
-    IS: true
+    IS: false
     log_interval: 10
-    n_workers: 6
+    n_workers: 4
     optimiser_config:
       type: "adam"
       learning_rate: 3e-4
+    n_epochs_update: 5
     
 
 # Controller Config
 controller_config: 
     action_size: 5
     gae_horizon: 16
-    n_epochs_update: 3
     gamma: 0.995
     lam: 0.95
-    clip_epsilon: 0.2
-    value_loss_coefficient: 0.5
+    clip_epsilon: 0.15
+    value_loss_coefficient: 0.75
     entropy_coefficient: 0.01
     tau: 0.99
     n_features: 12
@@ -50,19 +50,19 @@ controller_config:
 environment_config:
     height: 30
     width: 30
-    n_agents: 4
-    n_cities: 4
+    n_agents: 2
+    n_cities: 2
     grid_distribution: false
     max_rails_between_cities: 2
     max_rail_pairs_in_city: 2
     observation_builder_config: 
       type: "tree"
       predictor: "shortest_path"
-      max_depth: 3
+      max_depth: 2
     malfunction_config:
-      malfunction_rate: 0.001
-      min_duration: 20
-      max_duration: 50
+      malfunction_rate: 0.0
+      min_duration: 5
+      max_duration: 10
     speed_ratios: 
       1.: 0.7
       0.5: 0.3
