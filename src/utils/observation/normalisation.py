@@ -132,3 +132,14 @@ class FlatlandNormalisation(Normalisation):
         """
         # TODO: implement a better normalisation for speed
         return x
+
+
+class IdentityNormalisation(Normalisation):
+    """
+    No-op normalisation that returns observations unchanged. Useful for environments where no specific scaling is required.
+    """
+    def __init__(self) -> None:
+        super().__init__()
+
+    def normalise(self, x: Tensor, clip: bool = None, c: float = None) -> Tensor:
+        return x

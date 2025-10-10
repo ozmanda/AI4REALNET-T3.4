@@ -1,4 +1,6 @@
-from typing import Dict, Tuple, Union
+import importlib
+from typing import Any, Dict, Tuple, Union
+import numpy as np
 from flatland.envs.rail_env import RailEnv
 from flatland.envs.line_generators import sparse_line_generator
 from flatland.envs.rail_generators import sparse_rail_generator
@@ -6,11 +8,14 @@ from flatland.envs.predictions import ShortestPathPredictorForRailEnv
 from flatland.envs.observations import TreeObsForRailEnv, GlobalObsForRailEnv
 from flatland.envs.malfunction_generators import MalfunctionParameters, ParamMalfunctionGen
 from flatland.envs.rewards import Rewards, DefaultRewards, BasicMultiObjectiveRewards, PunctualityRewards
+from gymnasium import spaces
 
 from src.environments.scenario_loader import load_scenario_from_json, get_num_agents
 
 class FlatlandEnvConfig():
     def __init__(self, env_config: Dict[str, Union[int, float]]):
+        env_config = dict(env_config)
+        env_config.pop('type', None)
         if 'scenario_name' in env_config:
             self.scenario_name: str = env_config['scenario_name']
             self.observation_builder_config: Dict = env_config['observation_builder_config']
@@ -130,3 +135,94 @@ class FlatlandEnvConfig():
 
     def update_reward_config(self, reward_config: Dict[str, Union[float, int]]) -> None:
         self.reward_config = reward_config
+
+
+class PettingZooEnvConfig:
+    def __init__(self, env_config: Dict[str, Any]):
+        env_config = dict(env_config)
+        env_config.pop('type', None)
+        if 'module' not in env_config:
+            raise ValueError("PettingZooEnvConfig requires a 'module' key specifying the environment module path.")
+
+        self.env_type: str = 'pettingzoo'
+        self.module_path: str = env_config['module']
+        self.env_fn_name: str = env_config.get('env_fn', 'parallel_env')
+        self.env_kwargs: Dict[str, Any] = env_config.get('env_kwargs', {})
+        self.random_seed: Union[int, None] = env_config.get('random_seed')
+
+        self._validate_env_callable()
+        self._init_environment_metadata()
+
+    def _get_env_builder(self):
+        try:
+            module = importlib.import_module(self.module_path)
+        except ModuleNotFoundError as exc:
+            raise ValueError(f"Could not import PettingZoo module '{self.module_path}'.") from exc
+
+        if not hasattr(module, self.env_fn_name):
+            raise ValueError(f"Module '{self.module_path}' does not expose '{self.env_fn_name}'.")
+        return getattr(module, self.env_fn_name)
+
+    def _validate_env_callable(self) -> None:
+        builder = self._get_env_builder()
+        if not callable(builder):
+            raise ValueError(f"Attribute '{self.env_fn_name}' of module '{self.module_path}' is not callable.")
+
+    def _init_environment_metadata(self) -> None:
+        env_builder = self._get_env_builder()
+        preview_env = env_builder(**self.env_kwargs)
+        try:
+            reset_kwargs = {'seed': self.random_seed} if self.random_seed is not None else {}
+            reset_output = preview_env.reset(**reset_kwargs)
+            initial_obs = reset_output[0] if isinstance(reset_output, tuple) else reset_output
+
+            possible_agents = getattr(preview_env, 'possible_agents', None)
+            if possible_agents:
+                self.agent_ids = list(possible_agents)
+            elif isinstance(initial_obs, dict):
+                self.agent_ids = list(initial_obs.keys())
+            else:
+                raise ValueError("Unable to infer agent identifiers from the PettingZoo environment.")
+
+            if not self.agent_ids:
+                raise ValueError("PettingZoo environment reported zero agents.")
+
+            self.n_agents: int = len(self.agent_ids)
+            representative_agent = self.agent_ids[0]
+            self.observation_space = preview_env.observation_space(representative_agent)
+            self.action_space = preview_env.action_space(representative_agent)
+        finally:
+            preview_env.close()
+
+        if isinstance(self.observation_space, spaces.Box):
+            self.state_shape = self.observation_space.shape
+            self.state_size = int(np.prod(self.state_shape))
+        elif isinstance(self.observation_space, spaces.Discrete):
+            self.state_shape = (self.observation_space.n,)
+            self.state_size = self.observation_space.n
+        else:
+            raise ValueError(f"Unsupported observation space type '{type(self.observation_space).__name__}' for PettingZoo environments.")
+
+        if isinstance(self.action_space, spaces.Discrete):
+            self.action_size = self.action_space.n
+        else:
+            raise ValueError(f"Unsupported action space type '{type(self.action_space).__name__}'. Only discrete action spaces are supported.")
+
+    def create_env(self):
+        """
+        Instantiate a new PettingZoo environment instance.
+        """
+        env_builder = self._get_env_builder()
+        return env_builder(**self.env_kwargs)
+
+    def get_num_agents(self) -> int:
+        return self.n_agents
+
+
+def create_env_config(env_config: Dict[str, Any]):
+    env_type = env_config.get('type', 'flatland').lower()
+    if env_type == 'flatland':
+        return FlatlandEnvConfig(env_config)
+    if env_type == 'pettingzoo':
+        return PettingZooEnvConfig(env_config)
+    raise ValueError(f"Unknown environment configuration type '{env_type}'.")

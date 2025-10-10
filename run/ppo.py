@@ -16,7 +16,7 @@ if src_path not in sys.path:
 from src.utils.file_utils import load_config_file
 from src.utils.observation.obs_utils import calculate_state_size
 
-from src.configs.EnvConfig import FlatlandEnvConfig
+from src.configs.EnvConfig import create_env_config
 from src.configs.ControllerConfigs import PPOControllerConfig
 from src.algorithms.PPO.PPOLearner import PPOLearner
 
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     # prepare environment config
     if args.random_seed:
         config['environment_config']['random_seed'] = args.random_seed
-    env_config = FlatlandEnvConfig(config['environment_config'])
+    env_config = create_env_config(config['environment_config'])
 
     # prepare controller config and setup parallelisation
     learner_config = config['learner_config']
@@ -65,8 +65,18 @@ if __name__ == '__main__':
     learner_config['n_workers'] = args.n_workers
 
     # prepare controller
-    config['controller_config']['n_nodes'], config['controller_config']['state_size'] = calculate_state_size(env_config.observation_builder_config['max_depth'])
-    controller_config = PPOControllerConfig(config['controller_config'])
+    controller_config_dict = config['controller_config']
+    env_type = getattr(env_config, 'env_type', 'flatland')
+    if env_type == 'flatland':
+        n_nodes, state_size = calculate_state_size(env_config.observation_builder_config['max_depth'])
+        controller_config_dict['n_nodes'] = n_nodes
+        controller_config_dict['state_size'] = state_size
+    else:
+        controller_config_dict['state_size'] = getattr(env_config, 'state_size')
+        controller_config_dict['action_size'] = getattr(env_config, 'action_size')
+        controller_config_dict['n_nodes'] = controller_config_dict.get('n_nodes', 1)
+        controller_config_dict['n_features'] = controller_config_dict['state_size']
+    controller_config = PPOControllerConfig(controller_config_dict)
 
 
     train_ppo(controller_config = controller_config,

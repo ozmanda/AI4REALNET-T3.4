@@ -7,15 +7,15 @@ max_optimisation_steps: 1000
 
 # Learner Config
 learner_config: 
-    run_name: "FNN_small_run3"
+    run_name: "FNN_cooperative_pong"
     max_steps: 10000
-    max_steps_per_episode: 400
+    max_steps_per_episode: 900
     target_updates: 100
     samples_per_update: 512
     batch_size: 256
     IS: false
     log_interval: 10
-    n_workers: 4
+    n_workers: 2
     optimiser_config:
       type: "adam"
       learning_rate: 3e-4
@@ -24,7 +24,7 @@ learner_config:
 
 # Controller Config
 controller_config: 
-    action_size: 5
+    action_size: 3
     gae_horizon: 16
     gamma: 0.995
     lam: 0.95
@@ -48,22 +48,16 @@ controller_config:
 
 # Environment Config
 environment_config:
-    height: 30
-    width: 30
-    n_agents: 2
-    n_cities: 2
-    grid_distribution: false
-    max_rails_between_cities: 2
-    max_rail_pairs_in_city: 2
-    observation_builder_config: 
-      type: "tree"
-      predictor: "shortest_path"
-      max_depth: 2
-    malfunction_config:
-      malfunction_rate: 0.0
-      min_duration: 5
-      max_duration: 10
-    speed_ratios: 
-      1.: 0.7
-      0.5: 0.3
-    reward_config: 0
+    type: pettingzoo
+    module: pettingzoo.butterfly.cooperative_pong_v5
+    env_fn: parallel_env
+    env_kwargs:
+        max_cycles: 900
+        left_paddle_speed: 12
+        right_paddle_speed: 12
+        ball_speed: 9
+        cake_paddle: true
+        bounce_randomness: false
+        max_reward: 100
+        off_screen_penalty: -10
+        render_mode: null
