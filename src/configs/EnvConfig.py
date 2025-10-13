@@ -228,6 +228,7 @@ class GymEnvConfig:
             raise ValueError("GymEnvConfig requires an 'id' specifying the Gym environment name.")
 
         self.env_type: str = 'gym'
+        self.n_agents: int = 1
         self.env_id: str = env_config['id']
         self.env_kwargs: Dict[str, Any] = env_config.get('env_kwargs', {})
         self.random_seed: Union[int, None] = env_config.get('random_seed')
