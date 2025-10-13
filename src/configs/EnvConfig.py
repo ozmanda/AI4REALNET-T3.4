@@ -9,6 +9,7 @@ from flatland.envs.rewards import Rewards, DefaultRewards, BasicMultiObjectiveRe
 
 from src.environments.scenario_loader import load_scenario_from_json, get_num_agents
 from src.reward.reward_utils import SimpleReward
+from src.reward.SimpleStepPenalty import SimpleStepPenalty
 
 class FlatlandEnvConfig():
     def __init__(self, env_config: Dict[str, Union[int, float]]):
@@ -97,6 +98,8 @@ class FlatlandEnvConfig():
         if reward_config: 
             if reward_config == 'simple':
                 return SimpleReward()
+            elif reward_config == 'simple_step_penalty':
+                return SimpleStepPenalty(step_penalty=-1.0, terminal_bonus=10.0, progress_coef=0.1)
             elif reward_config == 'default':
                 return DefaultRewards()
             elif reward_config == 'basic_multi_objective':
