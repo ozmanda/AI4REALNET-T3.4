@@ -174,7 +174,10 @@ class MultiAgentRolloutBuffer:
         Splits the transitions into minibatches of a specified size.
         """
         # remove extras from transition dict as they are not needed for training
-        del self.transitions['extras']
+        try:
+            del self.transitions['extras']
+        except KeyError:
+            pass
         self.transitions = self.shuffle_transitions(self.transitions)
         minibatches = []
         for i in range(0, self.transitions['states'].size(0), minibatch_size):
