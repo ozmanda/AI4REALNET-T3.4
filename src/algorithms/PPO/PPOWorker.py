@@ -65,6 +65,9 @@ class PPOWorker(mp.Process):
             self.obs_type: str = self.env_config.observation_builder_config['type']
             self.max_depth: int = self.env_config.observation_builder_config['max_depth']
             self.agent_ids: List[Union[int, str]] = list(range(self.env_config.get_num_agents()))
+        elif self.env_type == 'gym':
+            self.agent_ids = [0]
+            setattr(self.env_config, 'agent_ids', self.agent_ids)
         else:
             agent_ids = list(getattr(self.env, 'possible_agents', []))
             if not agent_ids:
@@ -100,7 +103,7 @@ class PPOWorker(mp.Process):
         Run a single episode in the environment and collect rollouts.
         """
         reset_result = self.env.reset()
-        current_state_dict = reset_result[0] if isinstance(reset_result, tuple) else reset_result
+        current_state_dict = self._format_observation(reset_result)
         self.rollout.reset(n_agents=self.n_agents)
         self._wait_for_weights()
 
@@ -139,7 +142,7 @@ class PPOWorker(mp.Process):
             if episode_done or episode_step >= self.max_steps_per_episode:
                 self.rollout.end_episode()
                 reset_result = self.env.reset()
-                current_state_dict = reset_result[0] if isinstance(reset_result, tuple) else reset_result
+                current_state_dict = self._format_observation(reset_result)
                 current_state_tensor = self._observation_to_tensor(current_state_dict)
                 current_state_tensor = self.normalise_observation(current_state_tensor)
                 episode_step = 0
@@ -161,6 +164,21 @@ class PPOWorker(mp.Process):
         normalized_observation = self.normalisation.normalise(observation.unsqueeze(0))
         return normalized_observation.squeeze(0)
 
+    def _format_observation(self, observation):
+        """
+        Ensure observations are returned as dictionaries keyed by agent ids.
+        """
+        if self.env_type == 'flatland':
+            return observation
+        if self.env_type == 'gym':
+            obs = observation[0] if isinstance(observation, tuple) else observation
+            return {self.agent_ids[0]: obs}
+
+        # PettingZoo style
+        if isinstance(observation, tuple):
+            return observation[0]
+        return observation
+
     def _observation_to_tensor(self, observation: Dict[Union[int, str], Union[np.ndarray, Tensor]]) -> Tensor:
         """
         Convert environment observations to a tensor with shape (n_agents, state_size).
@@ -172,6 +190,13 @@ class PPOWorker(mp.Process):
                                         max_depth=self.max_depth,
                                         n_nodes=self.controller.config['n_nodes'])
             return tensor.view(self.n_agents, -1)
+
+        if self.env_type == 'gym':
+            agent_obs = observation[self.agent_ids[0]]
+            arr = np.asarray(agent_obs, dtype=np.float32)
+            if arr.ndim == 0:
+                arr = arr.reshape(1)
+            return torch.from_numpy(arr.reshape(1, -1))
 
         state_shape = getattr(self.env_config, 'state_shape', None)
         if state_shape is None:
@@ -195,10 +220,14 @@ class PPOWorker(mp.Process):
             obs_tensors.append(torch.from_numpy(agent_array).flatten())
         return torch.stack(obs_tensors, dim=0)
 
-    def _build_action_dict(self, actions: Tensor) -> Dict[Union[int, str], int]:
+    def _build_action_dict(self, actions: Tensor) -> Union[Dict[Union[int, str], int], int]:
         """
         Convert tensorised actions into the environment-specific dictionary format.
         """
+        if self.env_type == 'gym':
+            action_value = actions[0].item() if isinstance(actions[0], Tensor) else actions[0]
+            return int(action_value)
+
         action_dict: Dict[Union[int, str], int] = {}
         active_agents = getattr(self.env, 'agents', self.agent_ids) if self.env_type != 'flatland' else self.agent_ids
         for idx, agent_id in enumerate(self.agent_ids):
@@ -218,6 +247,15 @@ class PPOWorker(mp.Process):
             filtered_dones = {agent_id: dones.get(agent_id, False) for agent_id in self.agent_ids}
             filtered_dones['__all__'] = dones.get('__all__', all(filtered_dones.values()))
             return next_state, rewards, filtered_dones, infos
+
+        if self.env_type == 'gym':
+            next_state, reward, terminated, truncated, info = step_results
+            agent_id = self.agent_ids[0]
+            dones: Dict[Union[int, str], bool] = {agent_id: bool(terminated or truncated), '__all__': bool(terminated or truncated)}
+            rewards = {agent_id: float(reward)}
+            next_state_dict = {agent_id: next_state}
+            infos = {agent_id: info}
+            return next_state_dict, rewards, dones, infos
 
         next_state, rewards, terminations, truncations, infos = step_results
         dones: Dict[Union[int, str], bool] = {}
