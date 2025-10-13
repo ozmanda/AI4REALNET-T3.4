@@ -129,8 +129,6 @@ class PPOLearner():
 
         # gather rollouts and update when enough data is collected
         while self.completed_updates < self.target_updates:
-            # reset rollout for next update
-            self.rollout.reset(n_agents=self.env_config.n_agents)
             self.barrier.wait()  # wait for workers to finish their rollout
             for _ in range(self.n_workers):
                 # gather rollouts from workers
@@ -154,6 +152,8 @@ class PPOLearner():
                 # broadcast updated controller weights
                 self._broadcast_controller_state()
 
+                # reset rollout for next update
+                self.rollout.reset(n_agents=n_agents)
 
         # Wait for all workers to finish their last trajectory collections
         self.done_event.set()
