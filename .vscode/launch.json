@@ -7,6 +7,9 @@
             "request": "launch",
             "program": "${workspaceFolder}/run/ppo.py",
             "console": "integratedTerminal",
+            "args": [
+                "--config_path", "src/configs/PPO_CartPole.yaml"
+            ],
         },
         {
             "name": "PPO Synchronous",
@@ -14,6 +17,9 @@
             "request": "launch",
             "program": "${workspaceFolder}/run/ppo.py",
             "console": "integratedTerminal",
+            "args": [
+                "--config_path", "src/configs/PPO_CartPole.yaml"
+            ],
         },
         {
             "name": "IMPALA Asynchronous (Debug)",
@@ -21,6 +27,9 @@
             "request": "launch",
             "program": "${workspaceFolder}/run/impala.py",
             "console": "integratedTerminal",
+            "args": [
+                "--config_path", "src/configs/PPO_CartPole.yaml"
+            ],
         },
         {
             "name": "IMPALA Asynchronous",
@@ -28,6 +37,9 @@
             "request": "launch",
             "program": "${workspaceFolder}/run/impala.py",
             "console": "integratedTerminal",
+            "args": [
+                "--config_path", "src/configs/PPO_CartPole.yaml"
+            ],
         }
     ]
 }
