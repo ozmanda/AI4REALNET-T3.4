@@ -17,12 +17,13 @@ class SimpleReward(Rewards[int]):
     def __init__(self):
         super(SimpleReward, self).__init__()
 
-    def reset(self):
-        pass
 
     def step_reward(self, agent: EnvAgent, agent_transition_data: AgentTransitionData, distance_map: DistanceMap, elapsed_steps: int) -> int:
         """
-        Get the reward for a specific agent based on its current state.
+        Get the reward for a specific agent based on its current state. Simplified version of the default Flatland reward function: 
+         - +1 for reaching the target
+         - -1 for collisions
+         
 
         Args:
             handle (int): The unique identifier for the agent.
@@ -40,7 +41,8 @@ class SimpleReward(Rewards[int]):
             reward = 0
         return reward
 
-    def end_of_episode_reward(self, agent: EnvAgent):
+
+    def end_of_episode_reward(self, agent: EnvAgent, distance_map: DistanceMap, elapsed_steps: int) -> int:
         """
         Simple end-of-episode reward function: either the agent has reached its target (+1) or not (-1).
         """
@@ -52,8 +54,12 @@ class SimpleReward(Rewards[int]):
         return reward
         
 
-    def cumulate(self, *rewards):
-        pass
+    def cumulate(self, *rewards) -> int:
+        return sum(rewards)
+
+
+    def empty(self) -> int:
+        return 0
 
 
 def compute_discounted_reward_per_agent(rewards: Tensor, gamma: float) -> Tensor: 

@@ -15,7 +15,7 @@ from flatland.envs.rail_env import RailEnv
 from src.utils.utils import merge_dicts, dict_tuple_to_tensor
 from src.utils.action_utils import sample_action, action_tensor_to_dict
 from src.utils.observation.obs_utils import obs_dict_to_tensor
-from src.utils.reward_utils import compute_discounted_reward_per_agent
+from src.reward.reward_utils import compute_discounted_reward_per_agent
 
 class RNNTrainer(): 
     """ Trainer class for the no-communication recurrent policy networks, generalised to both the RNN and LSTM versions """

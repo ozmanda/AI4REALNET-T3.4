@@ -8,6 +8,7 @@ from flatland.envs.malfunction_generators import MalfunctionParameters, ParamMal
 from flatland.envs.rewards import Rewards, DefaultRewards, BasicMultiObjectiveRewards, PunctualityRewards
 
 from src.environments.scenario_loader import load_scenario_from_json, get_num_agents
+from src.reward.reward_utils import SimpleReward
 
 class FlatlandEnvConfig():
     def __init__(self, env_config: Dict[str, Union[int, float]]):
@@ -65,6 +66,9 @@ class FlatlandEnvConfig():
             malfunction_generator = ParamMalfunctionGen(MalfunctionParameters(malfunction_rate=self.malfunction_config['malfunction_rate'],
                                                                               min_duration=self.malfunction_config['min_duration'],
                                                                               max_duration=self.malfunction_config['max_duration']))
+            
+        rewards: Rewards = self.get_reward_function(self.reward_config)
+
         return RailEnv(width=self.width,
                        height=self.height,
                        number_of_agents=self.n_agents,
@@ -72,8 +76,8 @@ class FlatlandEnvConfig():
                        line_generator=line_generator,
                        malfunction_generator=malfunction_generator,
                        obs_builder_object=self.observation_builder,
-                       random_seed=self.random_seed)
-    
+                       random_seed=self.random_seed,
+                       rewards=rewards)
 
     def create_observation_builder(self) -> None:
         # Create the observation builder
@@ -92,7 +96,6 @@ class FlatlandEnvConfig():
     def get_reward_function(self, reward_config: str) -> Rewards:
         if reward_config: 
             if reward_config == 'simple':
-                from src.utils.reward_utils import SimpleReward
                 return SimpleReward()
             elif reward_config == 'default':
                 return DefaultRewards()

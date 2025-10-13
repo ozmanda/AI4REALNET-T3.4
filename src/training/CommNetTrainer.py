@@ -9,7 +9,7 @@ from typing import List, Tuple, Dict, Any
 from src.utils.utils import merge_dicts, dict_tuple_to_tensor
 from src.utils.action_utils import sample_action, action_tensor_to_dict
 from src.utils.observation.obs_utils import obs_dict_to_tensor, _calculate_tree_nodes
-from src.utils.reward_utils import compute_discounted_reward_per_agent
+from src.reward.reward_utils import compute_discounted_reward_per_agent
 from src.training.RNNTrainer import RNNTrainer
 
 class CommNetTrainer(RNNTrainer):
