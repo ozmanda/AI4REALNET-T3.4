@@ -7,19 +7,25 @@ max_optimisation_steps: 1000
 
 # Learner Config
 learner_config: 
-    run_name: "FNN_run1"
-    max_steps: 10000
-    max_steps_per_episode: 400
-    target_updates: 100
-    samples_per_update: 256
+    run_name: "FNN_step_penalty_run"
+    max_steps: 200000
+    max_steps_per_episode: 200
+    target_updates: 500
+    samples_per_update: 4096
     training_iterations: 4
-    batch_size: 32
-    IS: true
+    batch_size: 256
+    IS: false
     log_interval: 10
-    n_workers: 1
+    n_workers: 4
     optimiser_config:
       type: "adam"
-      learning_rate: 1e-5
+      learning_rate: 3e-4
+    masking:
+      use_action_mask: true
+      mask_wait_stop_if_movable: false
+      use_decision_mask: true
+      decision_rule: "turn_or_blocked"   # oder "strict_turns" / "none"
+      non_decision_weight: 0.3
     
 
 # Controller Config
@@ -28,35 +34,34 @@ controller_config:
     neighbour_depth: 2
     batch_size: 32
     gae_horizon: 16
-    n_epochs_update: 3
-    gamma: 0.995
+    n_epochs_update: 4
+    gamma: 0.99
     lam: 0.95
     clip_epsilon: 0.2
     value_loss_coefficient: 0.5
-    entropy_coefficient: 0.01
+    entropy_coefficient: 0.006
     tau: 0.99
     n_features: 12
     actor_config:
       type: "FNN"
       layer_sizes: 
-      - 512
       - 256
-      - 128
+      - 256
     critic_config:
       type: "FNN"
       hidden_size: 128
       layer_sizes: 
       - 256
-      - 128
+      - 256
 
 
 # Environment Config
 environment_config:
-    height: 30
-    width: 30
-    n_agents: 8
-    n_cities: 4
-    grid_distribution: false
+    height: 25
+    width: 25
+    n_agents: 5
+    n_cities: 3
+    grid_distribution: true
     max_rails_between_cities: 2
     max_rail_pairs_in_city: 2
     observation_builder_config: 
@@ -64,10 +69,14 @@ environment_config:
       predictor: "shortest_path"
       max_depth: 3
     malfunction_config:
-      malfunction_rate: 0.001
-      min_duration: 20
-      max_duration: 50
+      malfunction_rate: 0.0
+      min_duration: 0
+      max_duration: 0
     speed_ratios: 
       1.: 0.7
       0.5: 0.3
-    reward_config: 0
+    reward_config:
+      type: "step_penalty"
+      step_penalty: -1.0
+      terminal_bonus: 20.0
+      progress_coef: 0.3
