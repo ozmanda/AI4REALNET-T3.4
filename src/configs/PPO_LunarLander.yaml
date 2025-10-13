@@ -1,0 +1,52 @@
+---
+# run info
+n_episodes: 200
+seed: 42
+n_workers: 1
+max_optimisation_steps: 2000
+
+# Learner Config
+learner_config:
+    run_name: "FNN_lunarlander"
+    max_steps: 200000
+    max_steps_per_episode: 1000
+    target_updates: 200
+    samples_per_update: 2048
+    batch_size: 256
+    IS: false
+    log_interval: 10
+    n_workers: 1
+    optimiser_config:
+      type: "adam"
+      learning_rate: 3e-4
+    n_epochs_update: 10
+
+
+# Controller Config
+controller_config:
+    action_size: 4
+    gae_horizon: 32
+    gamma: 0.99
+    lam: 0.95
+    clip_epsilon: 0.2
+    value_loss_coefficient: 0.5
+    entropy_coefficient: 0.01
+    tau: 0.99
+    n_features: 8
+    actor_config:
+      type: "FNN"
+      layer_sizes:
+      - 256
+      - 128
+    critic_config:
+      type: "FNN"
+      layer_sizes:
+      - 256
+      - 128
+
+
+# Environment Config
+environment_config:
+    type: gym
+    id: LunarLander-v3
+    env_kwargs: {}

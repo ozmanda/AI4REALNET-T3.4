@@ -1,6 +1,7 @@
 import importlib
 from typing import Any, Dict, Tuple, Union
 import numpy as np
+import gymnasium as gym
 from flatland.envs.rail_env import RailEnv
 from flatland.envs.line_generators import sparse_line_generator
 from flatland.envs.rail_generators import sparse_rail_generator
@@ -219,10 +220,62 @@ class PettingZooEnvConfig:
         return self.n_agents
 
 
+class GymEnvConfig:
+    def __init__(self, env_config: Dict[str, Any]):
+        env_config = dict(env_config)
+        env_config.pop('type', None)
+        if 'id' not in env_config:
+            raise ValueError("GymEnvConfig requires an 'id' specifying the Gym environment name.")
+
+        self.env_type: str = 'gym'
+        self.env_id: str = env_config['id']
+        self.env_kwargs: Dict[str, Any] = env_config.get('env_kwargs', {})
+        self.random_seed: Union[int, None] = env_config.get('random_seed')
+        self._init_environment_metadata()
+
+    def _make_env(self):
+        return gym.make(self.env_id, **self.env_kwargs)
+
+    def _init_environment_metadata(self) -> None:
+        env = self._make_env()
+        try:
+            if self.random_seed is not None:
+                env.reset(seed=self.random_seed)
+
+            self.observation_space = env.observation_space
+            self.action_space = env.action_space
+            self.max_episode_steps = getattr(env.spec, 'max_episode_steps', None)
+
+            if isinstance(self.observation_space, spaces.Box):
+                self.state_shape = self.observation_space.shape
+                self.state_size = int(np.prod(self.state_shape))
+            elif isinstance(self.observation_space, spaces.Discrete):
+                self.state_shape = (1,)
+                self.state_size = self.observation_space.n
+            else:
+                raise ValueError(f"Unsupported Gym observation space '{type(self.observation_space).__name__}'.")
+
+            if isinstance(self.action_space, spaces.Discrete):
+                self.action_size = self.action_space.n
+            else:
+                raise ValueError(f"Unsupported Gym action space '{type(self.action_space).__name__}'. Only Discrete spaces are supported.")
+        finally:
+            env.close()
+
+    def create_env(self):
+        env = self._make_env()
+        return env
+
+    def get_num_agents(self) -> int:
+        return 1
+
+
 def create_env_config(env_config: Dict[str, Any]):
     env_type = env_config.get('type', 'flatland').lower()
     if env_type == 'flatland':
         return FlatlandEnvConfig(env_config)
     if env_type == 'pettingzoo':
         return PettingZooEnvConfig(env_config)
+    if env_type == 'gym':
+        return GymEnvConfig(env_config)
     raise ValueError(f"Unknown environment configuration type '{env_type}'.")
