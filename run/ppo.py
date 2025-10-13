@@ -45,7 +45,6 @@ if __name__ == '__main__':
     parser.add_argument('--config_path', type=str, default='src/configs/PPO_FNN.yaml', help='Path to the configuration file')
     parser.add_argument('--random_seed', type=int, default=None, help='Random seed for reproducibility')
     parser.add_argument('--device', type=str, default='cpu', help='Device to run the training on (cpu or cuda)')
-    parser.add_argument('--n_workers', type=int, default=4, help='Number of parallel workers for training')
     args = parser.parse_args()
 
 
@@ -59,10 +58,6 @@ if __name__ == '__main__':
 
     # prepare controller config and setup parallelisation
     learner_config = config['learner_config']
-    if args.device == 'cpu' and args.n_workers is None:
-        # If no device is specified, use all available CPU cores
-        args.n_workers = mp.cpu_count()
-    learner_config['n_workers'] = args.n_workers
 
     # prepare controller
     controller_config_dict = config['controller_config']
