@@ -35,12 +35,6 @@ class PPOController(nn.Module):
         """
         self.action_size: int = config['action_size']
         self.state_size: int = config['state_size']
-        self.gamma: float = config['gamma']
-        self.lam: float = config['lam']
-        self.gae_horizon: int = config['gae_horizon']
-        self.clip_epsilon: float = config['clip_epsilon']
-        self.value_loss_coef: float = config['value_loss_coefficient']
-        self.entropy_coef: float = config['entropy_coefficient']
 
     def _build_actor(self) -> None:
         self.actor_network = FeedForwardNN(self.state_size, self.action_size, self.config['actor_config'])
