@@ -157,44 +157,6 @@ class PPOWorker(mp.Process):
         normalized_observation = self.flatland_normalisation.normalise(observation.unsqueeze(0))
         return normalized_observation.squeeze(0)
 
-
-    def _generalised_advantage_estimator(self) -> Tensor:
-        """
-        Calculate the Generalised Advantage Estimator (GAE) for the current episode (called before rollout.end_episode).
-
-        Parameters:
-            - state          Tensor      (batch_size, n_features)
-            - next_state     Tensor      (batch_size, n_features)
-            - reward         Tensor      (batch_size)
-            - done           Tensor      (batch_size)
-            - step           int         Current step in the episode
-
-        Returns:
-            - advantages     Tensor      (batch_size)
-        """
-        with torch.no_grad():
-            for agent in range(self.env.number_of_agents):
-                states = torch.stack(self.rollout.current_episode['states'][agent])
-                next_states = torch.stack(self.rollout.current_episode['next_states'][agent])
-                rewards = torch.tensor(self.rollout.current_episode['rewards'][agent])
-                dones = torch.tensor(self.rollout.current_episode['dones'][agent]).float()
-                dones = (dones != 0).float()
-                gaes = torch.zeros(len(states))
-
-                state_values: Tensor = self.controller.critic_network(states).squeeze(-1)
-                next_state_values: Tensor = self.controller.critic_network(next_states).squeeze(-1)
-
-                self.rollout.current_episode['state_values'][agent] = state_values
-                self.rollout.current_episode['next_state_values'][agent] = next_state_values
-
-                deltas = rewards + self.controller.gamma * next_state_values * (1 - dones) - state_values
-
-                for i in reversed(range(len(deltas))):
-                    gaes[i] = deltas[i] + self.controller.gamma * gaes[i + 1] * (1 - dones[i]) if i < len(deltas) - 2 else deltas[i]
-
-                self.rollout.current_episode['gaes'][agent] = gaes
-
-
     def _wait_for_weights(self):
         """
         Wait for the learner to update weights, blocking until new weights are available.
