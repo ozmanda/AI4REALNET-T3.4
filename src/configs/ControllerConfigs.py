@@ -1,5 +1,6 @@
 from src.controllers.PPOController import PPOController
 from src.controllers.LSTMController import LSTMController
+from src.controllers.BaseController import Controller
 from typing import Dict, List, Union
 from src.utils.observation.obs_utils import calculate_state_size
 
@@ -8,7 +9,7 @@ class ControllerConfig():
         self.config_dict = config_dict
         self.type = config_dict.get('type', 'FNN')
 
-    def create_controller(self):
+    def create_controller(self) -> Controller:
         raise NotImplementedError("This method should be overridden by subclasses.")
 
 class PPOControllerConfig(ControllerConfig): 
