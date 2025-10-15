@@ -15,6 +15,9 @@ import torch.multiprocessing as mp
 from multiprocessing.synchronize import Event
 from multiprocessing.managers import DictProxy
 
+from src.controllers.BaseController import Controller
+from src.controllers.PPOController import PPOController
+from src.controllers.LSTMController import LSTMController
 from src.configs.ControllerConfigs import ControllerConfig
 from src.configs.EnvConfig import FlatlandEnvConfig
 from src.algorithms.PPO.PPOWorker import PPOWorker
@@ -38,7 +41,7 @@ class PPOLearner():
         self._init_queues()
 
         # Initialise the optimiser
-        self.optimizer: optim.optimizer.Optimizer = self._build_optimizer(learner_config['optimiser_config'])
+        self._build_optimiser(learner_config['optimiser_config'])
         self.epochs: int = 0
 
         # Initialise wandb for logging
@@ -53,10 +56,7 @@ class PPOLearner():
         self.controller_config = config
         self.n_nodes: int = config.config_dict['n_nodes']
         self.state_size: int = config.config_dict['state_size']
-        self.entropy_coeff: float = config.config_dict['entropy_coefficient']
-        self.value_loss_coeff: float = config.config_dict['value_loss_coefficient']
-        self.gamma: float = config.config_dict['gamma']
-        self.controller = config.create_controller()
+        self.controller: Union[PPOController, LSTMController, Controller] = config.create_controller()
 
     def _init_learning_params(self, learner_config: Dict) -> None:
         self.max_steps: int = learner_config['max_steps']
@@ -69,7 +69,13 @@ class PPOLearner():
         self.importance_sampling: bool = learner_config['IS']
         self.episodes_infos: List[Dict] = []
         self.total_episodes: int = 0
-        self.n_epochs_per_update: int = learner_config['n_epochs_update']
+        self.sgd_iterations: int = learner_config['sgd_iterations']
+        self.entropy_coeff: float = learner_config['entropy_coefficient']
+        self.value_loss_coeff: float = learner_config['value_loss_coefficient']
+        self.gamma: float = learner_config['gamma']
+        self.gae_lambda: float = learner_config['lam']
+        self.gae_horizon: int = learner_config['gae_horizon']
+        self.clip_epsilon: float = learner_config['clip_epsilon']
 
     def _init_wandb(self, learner_config: Dict) -> None:
         """
@@ -101,8 +107,8 @@ class PPOLearner():
         Synchronous PPO training run.
         """
         # initialise learning rollout
-        n_agents = self.env_config.get_num_agents()
-        self.rollout = MultiAgentRolloutBuffer(n_agents=n_agents)
+        self.n_agents = self.env_config.get_num_agents()
+        self.rollout = MultiAgentRolloutBuffer(n_agents=self.n_agents)
 
         # create and start workers
         # TODO: add device specification for the workers
@@ -153,7 +159,7 @@ class PPOLearner():
                 self._broadcast_controller_state()
 
                 # reset rollout for next update
-                self.rollout.reset(n_agents=self.env_config.n_agents)
+                self.rollout.reset(n_agents=self.n_agents)
 
         # Wait for all workers to finish their last trajectory collections
         self.done_event.set()
@@ -212,6 +218,7 @@ class PPOLearner():
                     f'worker_{worker_id}/total_reward': log_info['episode/total_reward'],
                     f'worker_{worker_id}/average_reward': log_info['episode/average_reward'],
                     f'worker_{worker_id}/average_episode_length': log_info['episode/average_length'],
+                    f'worker_{worker_id}/completion': log_info['episode/completion'],
                     # global aggregated metrics
                     'episode/total_reward': log_info['episode/total_reward'],
                 })
@@ -219,7 +226,7 @@ class PPOLearner():
             pass
 
 
-    def _build_optimizer(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
+    def _build_optimiser(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
         if optimiser_config['type'] == 'adam': 
             self.optimiser = optim.Adam(params=chain(self.controller.actor_network.parameters(), self.controller.critic_network.parameters()), lr=float(optimiser_config['learning_rate']))
         else: 
@@ -235,10 +242,16 @@ class PPOLearner():
             'value_loss': []
         }
 
-        self._gaes()
+        gae_stats = self._gaes()
         self.rollout.get_transitions(gae=True) # TODO: check that this is done correctly everywhere
 
-        for _ in range(self.n_epochs_per_update):   
+        for _ in range(self.sgd_iterations):  
+            entropy_sum: Tensor = Tensor()
+            old_log_probs_sum: Tensor = Tensor()
+            new_log_probs_sum: Tensor = Tensor()
+            actor_delta = []
+            critic_delta = []
+
             for minibatch in self.rollout.get_minibatches(self.batch_size): # TODO: check that this is the right batchsize
                 new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(minibatch['states'], minibatch['next_states'], minibatch['actions'])
                 minibatch['new_log_probs'] = new_log_probs
@@ -247,19 +260,53 @@ class PPOLearner():
                 minibatch['entropy'] = entropy
 
                 total_loss, actor_loss, critic_loss = self._loss(minibatch)
+                
+                #! delta actor / critic norm calculation
+                with torch.no_grad():
+                    actor_before = torch.nn.utils.parameters_to_vector(self.controller.actor_network.parameters()).norm().item()
+                    critic_before = torch.nn.utils.parameters_to_vector(self.controller.critic_network.parameters()).norm().item()
 
                 self.optimiser.zero_grad()
                 total_loss.backward()
+
+                #! inspecting gradients before stepping
+                for name, param in self.controller.actor_network.named_parameters():
+                    if param.grad is None:
+                        print(f"Warning: No gradient for actor parameter {name}")
+                for name, param in self.controller.critic_network.named_parameters():
+                    if param.grad is None:
+                        print(f"Warning: No gradient for critic parameter {name}")
+
                 self.optimiser.step()
+
+                with torch.no_grad():
+                    actor_after = torch.nn.utils.parameters_to_vector(self.controller.actor_network.parameters()).norm().item()
+                    critic_after = torch.nn.utils.parameters_to_vector(self.controller.critic_network.parameters()).norm().item()
+                    actor_delta = actor_after - actor_before
+                    critic_delta = critic_after - critic_before
 
                 # add metrics
                 losses['policy_loss'].append(actor_loss.item())
                 losses['value_loss'].append(critic_loss.item())
+
+                # entropy and log probs for approx KL
+                entropy_sum = torch.cat((entropy_sum, minibatch['entropy']))
+                old_log_probs_sum = torch.cat((old_log_probs_sum, minibatch['log_probs']))
+                new_log_probs_sum = torch.cat((new_log_probs_sum, new_log_probs))
+
             self.epochs += 1
             wandb.log({
                 'epoch': self.epochs,
                 'train/policy_loss': np.mean(losses['policy_loss']),
-                'train/value_loss': np.mean(losses['value_loss'])
+                'train/value_loss': np.mean(losses['value_loss']),
+                'train/raw_gae_mean': gae_stats[0],
+                'train/raw_gae_std': gae_stats[1],
+                'train/gae_mean': gae_stats[2],
+                'train/gae_std': gae_stats[3],
+                'train/mean_entropy': entropy.mean().item(),
+                'train/approx_kl': torch.mean(old_log_probs_sum - new_log_probs_sum).item(),
+                'train/actor_delta': actor_delta,
+                'train/critic_delta': critic_delta
             })
 
         return losses
@@ -298,9 +345,8 @@ class PPOLearner():
         return total_loss, actor_loss, critic_loss
 
 
-    def _gaes(self) -> None:
+    def _gaes(self) -> Tuple[float, float, float, float]:
         # TODO: normalise GAEs
-        all_gaes: List[Tensor] = []
         for idx, episode in enumerate(self.rollout.episodes):
             self.rollout.episodes[idx]['gaes'] = [[] for _ in range(self.env_config.n_agents)]
             for agent in range(len(episode['states'])):
@@ -321,35 +367,40 @@ class PPOLearner():
 
                 gae_tensor = torch.stack(gaes)
                 self.rollout.episodes[idx]['gaes'][agent] = gae_tensor
-                all_gaes.append(gae_tensor)
 
-        self._normalise_gaes(all_gaes)
+        return self._normalise_gaes()
 
     
-    def _normalise_gaes(self, gaes: List[Tensor]) -> None:
-        if not gaes:
-            return
-        stacked_gaes = torch.cat([gae.flatten() for gae in gaes])
-        gae_mean = stacked_gaes.mean()
-        gae_std = stacked_gaes.std().clamp_min(1e-8)  # avoid division by zero
-        for idx, episode in enumerate(self.rollout.episodes):
-            for agent in range(len(episode['gaes'])):
-                gae_tensor = episode['gaes'][agent]
-                if isinstance(gae_tensor, list):
-                    gae_tensor = torch.stack(gae_tensor)
-                self.rollout.episodes[idx]['gaes'][agent] = (gae_tensor - gae_mean) / gae_std
+    def _normalise_gaes(self) -> Tuple[float, float, float, float]:
+        n_episodes = len(self.rollout.episodes)
+
+        stacked_gaes = torch.cat([torch.cat(self.rollout.episodes[episode]['gaes']) for episode in range(n_episodes)], dim=0)
+
+        raw_gae_mean = stacked_gaes.mean()
+        raw_gae_std = stacked_gaes.std().clamp_min(1e-8)  # avoid division by zero
+
+        for idx in range(n_episodes):
+            for agent in range(self.n_agents):
+                gae_tensor = self.rollout.episodes[idx]['gaes'][agent]
+                self.rollout.episodes[idx]['gaes'][agent] = (gae_tensor - raw_gae_mean) / raw_gae_std
+        
+        stacked_gaes = torch.cat([torch.cat(self.rollout.episodes[episode]['gaes']) for episode in range(n_episodes)], dim=0)
+        gae_mean = stacked_gaes.mean().item()
+        gae_std = stacked_gaes.std().item()
+
+        return raw_gae_mean.item(), raw_gae_std.item(), gae_mean, gae_std
 
 
     def _evaluate(self, states: Tensor, next_states: Tensor, actions: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         """ 
         Forward pass through the actor network to get the action distribution and log probabilities, to compute the entropy of the policy distribution and the current state values.
         """
-        logits = self.controller.actor_network(states)
+        logits = self.controller.actor_network(states) # (batch_size, n_actions)
         action_distribution = torch.distributions.Categorical(logits=logits)
-        log_probs = action_distribution.log_prob(actions)
-        entropy = action_distribution.entropy()
-        state_values = self.controller.critic_network(states)
-        next_state_values = self.controller.critic_network(next_states)
+        log_probs = action_distribution.log_prob(actions) # (batch_size,)
+        entropy = action_distribution.entropy() # (batch_size,)
+        state_values = self.controller.critic_network(states) # (batch_size, 1)
+        next_state_values = self.controller.critic_network(next_states) # (batch_size, 1)
         return log_probs, entropy, state_values, next_state_values
     
     # TODO: finish implementing running mean and std calculation over all workers
