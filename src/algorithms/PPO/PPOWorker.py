@@ -61,6 +61,7 @@ class PPOWorker(mp.Process):
         self.obs_type: str = self.env_config.observation_builder_config['type']
         self.max_depth: int = self.env_config.observation_builder_config['max_depth']
         self.env: RailEnv = self.env_config.create_env()
+        self.n_agents: int = self.env.number_of_agents  
 
 
     def _init_normalisation(self) -> None:
@@ -144,7 +145,8 @@ class PPOWorker(mp.Process):
                                         'episode': self.total_episodes,
                                         'episode/total_reward': self.rollout.episodes[-1]['total_reward'],
                                         'episode/average_reward': self.rollout.episodes[-1]['average_episode_reward'],
-                                        'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],})
+                                        'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],
+                                        'episode/completion': sum([dones[agent] for agent in range(self.n_agents)]) / self.n_agents})
                 if not self.done_event.is_set():
                     self._wait_for_weights()
 
