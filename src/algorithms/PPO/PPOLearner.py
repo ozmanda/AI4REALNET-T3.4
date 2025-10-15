@@ -319,7 +319,7 @@ class PPOLearner():
         actor_loss = policy_loss(gae=minibatch['gaes'],
                                 new_log_prob=minibatch['new_log_probs'],
                                 old_log_prob=minibatch['log_probs'],
-                                clip_eps=self.controller.config['clip_epsilon'])
+                                clip_eps=self.clip_epsilon)
 
         if self.importance_sampling:
             critic_loss = value_loss_with_IS(state_values=minibatch['new_state_values'],
@@ -328,20 +328,21 @@ class PPOLearner():
                                             old_log_prob=minibatch['log_probs'],
                                             reward=minibatch['rewards'],
                                             done=minibatch['dones'],
-                                            gamma=self.controller.config['gamma']
+                                            gamma=self.gamma
                                             )
         else:
             critic_loss = value_loss(state_values=minibatch['new_state_values'],
                                     next_state_values=minibatch['new_next_state_values'],
                                     reward=minibatch['rewards'],
                                     done=minibatch['dones'],
-                                    gamma=self.controller.config['gamma'])            
-            
+                                    gamma=self.gamma
+                                    )
+
         # Entropy bonus
         entropy_loss = -minibatch['entropy'].mean()  # Encourage exploration
 
         # Total loss & optimisation step        # TODO: controller or learner config?
-        total_loss: Tensor = actor_loss + critic_loss * self.controller.config['value_loss_coefficient'] + entropy_loss * self.controller.config['entropy_coefficient']
+        total_loss: Tensor = actor_loss + critic_loss * self.value_loss_coeff + entropy_loss * self.entropy_coeff
         return total_loss, actor_loss, critic_loss
 
 
@@ -362,7 +363,7 @@ class PPOLearner():
                 deltas = rewards + self.gamma * next_state_values * (1 - dones) - state_values
                 gae = 0
                 for t in reversed(range(len(rewards))):
-                    gae = deltas[t] + self.gamma * self.controller.config['lam'] * (1 - dones[t]) * gae
+                    gae = deltas[t] + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
                     gaes.insert(0, gae.detach())
 
                 gae_tensor = torch.stack(gaes)
