@@ -1,10 +1,12 @@
 from typing import Dict
 from torch import Tensor
+import torch.nn as nn
 
 class Controller:
     """ Base class for multi-agent RL Controllers. For use with a single agent, the input sizes should be adjusted accordingly."""
     def __init__(self):
-        pass
+        self.actor_network: nn.Module
+        self.critic_network: nn.Module
 
     def update_weights(self, network_params: Dict) -> None:
         """
