@@ -282,8 +282,8 @@ class PPOLearner():
                 with torch.no_grad():
                     actor_after = torch.nn.utils.parameters_to_vector(self.controller.actor_network.parameters()).norm().item()
                     critic_after = torch.nn.utils.parameters_to_vector(self.controller.critic_network.parameters()).norm().item()
-                    actor_delta = actor_after - actor_before
-                    critic_delta = critic_after - critic_before
+                    actor_delta = np.abs(actor_after - actor_before)
+                    critic_delta = np.abs(critic_after - critic_before)
 
                 # add metrics
                 losses['policy_loss'].append(actor_loss.item())
@@ -351,20 +351,19 @@ class PPOLearner():
         for idx, episode in enumerate(self.rollout.episodes):
             self.rollout.episodes[idx]['gaes'] = [[] for _ in range(self.env_config.n_agents)]
             for agent in range(len(episode['states'])):
-                states = torch.stack(episode['states'][agent])
                 state_values = torch.stack(episode['state_values'][agent])
-                next_states = torch.stack(episode['next_states'][agent])
                 next_state_values = torch.stack(episode['next_state_values'][agent])
+
                 rewards = torch.tensor(episode['rewards'][agent])
                 dones = torch.tensor(episode['dones'][agent]).float()
-                dones = (dones != 0).float()
-                gaes = []
+                traj_len = len(rewards)
 
-                deltas = rewards + self.gamma * next_state_values * (1 - dones) - state_values
-                gae = 0
+                gaes = [torch.tensor(0.0) for _ in range(len(rewards))]
+                advantage = 0.0
                 for t in reversed(range(len(rewards))):
-                    gae = deltas[t] + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
-                    gaes.insert(0, gae.detach())
+                    delta = rewards[t] + self.gamma * next_state_values[t] * (1 - dones[t]) - state_values[t]
+                    advantage = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * advantage
+                    gaes[t] = advantage
 
                 gae_tensor = torch.stack(gaes)
                 self.rollout.episodes[idx]['gaes'][agent] = gae_tensor
