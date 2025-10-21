@@ -256,7 +256,6 @@ class PPOLearner():
                 new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(minibatch['states'], minibatch['next_states'], minibatch['actions'])
                 minibatch['new_log_probs'] = new_log_probs
                 minibatch['new_state_values'] = new_state_values.squeeze(-1)
-                minibatch['new_next_state_values'] = new_next_state_values.squeeze(-1)
                 minibatch['entropy'] = entropy
 
                 total_loss, actor_loss, critic_loss = self._loss(minibatch)
@@ -268,17 +267,9 @@ class PPOLearner():
 
                 self.optimiser.zero_grad()
                 total_loss.backward()
-
-                #! inspecting gradients before stepping
-                for name, param in self.controller.actor_network.named_parameters():
-                    if param.grad is None:
-                        print(f"Warning: No gradient for actor parameter {name}")
-                for name, param in self.controller.critic_network.named_parameters():
-                    if param.grad is None:
-                        print(f"Warning: No gradient for critic parameter {name}")
-
                 self.optimiser.step()
-
+                
+                #! delta actor / critic norm calculation
                 with torch.no_grad():
                     actor_after = torch.nn.utils.parameters_to_vector(self.controller.actor_network.parameters()).norm().item()
                     critic_after = torch.nn.utils.parameters_to_vector(self.controller.critic_network.parameters()).norm().item()
@@ -301,10 +292,9 @@ class PPOLearner():
                 'train/value_loss': np.mean(losses['value_loss']),
                 'train/raw_gae_mean': gae_stats[0],
                 'train/raw_gae_std': gae_stats[1],
-                'train/gae_mean': gae_stats[2],
-                'train/gae_std': gae_stats[3],
                 'train/mean_entropy': entropy.mean().item(),
                 'train/approx_kl': torch.mean(old_log_probs_sum - new_log_probs_sum).item(),
+                #! delta actor / critic norm calculation
                 'train/actor_delta': actor_delta,
                 'train/critic_delta': critic_delta
             })
@@ -323,7 +313,7 @@ class PPOLearner():
 
         if self.importance_sampling:
             critic_loss = value_loss_with_IS(state_values=minibatch['new_state_values'],
-                                            next_state_values=minibatch['new_next_state_values'],
+                                            new_state_values=minibatch['new_state_values'],
                                             new_log_prob=minibatch['new_log_probs'],
                                             old_log_prob=minibatch['log_probs'],
                                             reward=minibatch['rewards'],
@@ -331,8 +321,8 @@ class PPOLearner():
                                             gamma=self.gamma
                                             )
         else:
-            critic_loss = value_loss(state_values=minibatch['new_state_values'],
-                                    next_state_values=minibatch['new_next_state_values'],
+            critic_loss = value_loss(state_values=minibatch['state_values'],
+                                    new_state_values=minibatch['new_state_values'],
                                     reward=minibatch['rewards'],
                                     done=minibatch['dones'],
                                     gamma=self.gamma
@@ -346,7 +336,7 @@ class PPOLearner():
         return total_loss, actor_loss, critic_loss
 
 
-    def _gaes(self) -> Tuple[float, float, float, float]:
+    def _gaes(self) -> Tuple[float, float]:
         # TODO: normalise GAEs
         for idx, episode in enumerate(self.rollout.episodes):
             self.rollout.episodes[idx]['gaes'] = [[] for _ in range(self.env_config.n_agents)]
@@ -371,7 +361,7 @@ class PPOLearner():
         return self._normalise_gaes()
 
     
-    def _normalise_gaes(self) -> Tuple[float, float, float, float]:
+    def _normalise_gaes(self) -> Tuple[float, float]:
         n_episodes = len(self.rollout.episodes)
 
         stacked_gaes = torch.cat([torch.cat(self.rollout.episodes[episode]['gaes']) for episode in range(n_episodes)], dim=0)
