@@ -95,6 +95,7 @@ class PPOWorker(mp.Process):
         # self.push_distance_obs(self._get_distance_obs(observation=current_state_tensor))
         # self._wait_for_normalisation()
         current_state_tensor = self.normalise_observation(current_state_tensor)
+        dones = {i: False for i in range(n_agents)}
 
         while not self.done_event.is_set():
             actions, log_probs, values, extras = self.controller.sample_action(current_state_tensor)
@@ -114,7 +115,7 @@ class PPOWorker(mp.Process):
             next_state_tensor = self.normalise_observation(next_state_tensor)
             next_state_values = self.controller.state_values(next_state_tensor, extras=extras)
             self.rollout.add_transitions(states=current_state_tensor.detach(), 
-                                         actions=actions_dict, 
+                                         actions=actions.detach(), 
                                          log_probs=log_probs.detach(), 
                                          rewards=rewards, 
                                          next_states=next_state_tensor.detach(), 
