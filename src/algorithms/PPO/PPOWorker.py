@@ -102,8 +102,9 @@ class PPOWorker(mp.Process):
             
             # TODO: consider agents which have already terminated
             for i in range(self.env.number_of_agents):
-                actions_dict[i] = actions[i].detach()
+                actions_dict[i] = int(actions[i].detach()) if not dones[i] else None
 
+            # step returns: tuple[Dict[AgentHandle, Any], dict[int, float], dict[str | int, bool], dict[str, Any]]
             next_state, rewards, dones, infos = self.env.step(actions_dict)
             next_state_tensor: Tensor = obs_dict_to_tensor(observation=next_state, 
                                                            obs_type=self.obs_type, 
@@ -126,7 +127,7 @@ class PPOWorker(mp.Process):
             episode_step += 1
 
             if all(dones.values()) or episode_step >= self.max_steps_per_episode:
-                # TODO: add mean and standard deviation information for normalisation (observation)
+                # TODO: add running mean and standard deviation information for normalisation
                 # self.push_distance_obs(self._get_distance_obs())
                 # self._wait_for_normalisation()
                 self.rollout.end_episode()
