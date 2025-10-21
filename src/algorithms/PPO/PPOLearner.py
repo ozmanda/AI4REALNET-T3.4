@@ -46,8 +46,6 @@ class PPOLearner():
 
         # Initialise wandb for logging
         self._init_wandb(learner_config)
-        wandb.watch(self.controller.actor_network, log='all')
-        wandb.watch(self.controller.critic_network, log='all')
 
         # Initialise running mean and std for observation normalisation
         self.distance_rms: RunningMeanStd = RunningMeanStd(size=1)
@@ -88,6 +86,7 @@ class PPOLearner():
         wandb.run.name = f"{self.run_name}_PPO"
         wandb.watch(self.controller.actor_network, log='all')
         wandb.watch(self.controller.critic_network, log='all')
+        wandb.watch(self.controller.encoder_network, log='all')
 
     def _init_queues(self) -> None:
         # create queues
@@ -188,6 +187,7 @@ class PPOLearner():
         os.makedirs(savepath, exist_ok=True)
         torch.save(self.controller.actor_network.state_dict(), os.path.join(savepath, 'actor_model.pth'))
         torch.save(self.controller.critic_network.state_dict(), os.path.join(savepath, 'critic_model.pth'))
+        torch.save(self.controller.encoder_network.state_dict(), os.path.join(savepath, 'encoder_model.pth'))
 
 
     def _gather_rollout(self) -> None:
@@ -201,7 +201,8 @@ class PPOLearner():
         """
         Push the current controller state to the shared dictionary for workers to access.
         """
-        controller_state = (self.controller.actor_network.state_dict(),
+        controller_state = (self.controller.encoder_network.state_dict(),
+                            self.controller.actor_network.state_dict(),
                             self.controller.critic_network.state_dict())
         self.shared_weights['controller_state'] = controller_state
         self.shared_weights['update_step'] = self.completed_updates
@@ -228,7 +229,7 @@ class PPOLearner():
 
     def _build_optimiser(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
         if optimiser_config['type'] == 'adam': 
-            self.optimiser = optim.Adam(params=chain(self.controller.actor_network.parameters(), self.controller.critic_network.parameters()), lr=float(optimiser_config['learning_rate']))
+            self.optimiser = optim.Adam(params=chain(self.controller.actor_network.parameters(), self.controller.critic_network.parameters(), self.controller.encoder_network.parameters()), lr=float(optimiser_config['learning_rate']))
         else: 
             raise Warning('Only Adam optimiser has been implemented')
 
@@ -264,17 +265,20 @@ class PPOLearner():
                 with torch.no_grad():
                     actor_before = torch.nn.utils.parameters_to_vector(self.controller.actor_network.parameters()).norm().item()
                     critic_before = torch.nn.utils.parameters_to_vector(self.controller.critic_network.parameters()).norm().item()
+                    encoder_before = torch.nn.utils.parameters_to_vector(self.controller.encoder_network.parameters()).norm().item()
 
                 self.optimiser.zero_grad()
                 total_loss.backward()
                 self.optimiser.step()
-                
+
                 #! delta actor / critic norm calculation
                 with torch.no_grad():
                     actor_after = torch.nn.utils.parameters_to_vector(self.controller.actor_network.parameters()).norm().item()
                     critic_after = torch.nn.utils.parameters_to_vector(self.controller.critic_network.parameters()).norm().item()
+                    encoder_after = torch.nn.utils.parameters_to_vector(self.controller.encoder_network.parameters()).norm().item()
                     actor_delta = np.abs(actor_after - actor_before)
                     critic_delta = np.abs(critic_after - critic_before)
+                    encoder_delta = np.abs(encoder_after - encoder_before)
 
                 # add metrics
                 losses['policy_loss'].append(actor_loss.item())
@@ -296,7 +300,8 @@ class PPOLearner():
                 'train/approx_kl': torch.mean(old_log_probs_sum - new_log_probs_sum).item(),
                 #! delta actor / critic norm calculation
                 'train/actor_delta': actor_delta,
-                'train/critic_delta': critic_delta
+                'train/critic_delta': critic_delta,
+                'train/encoder_delta': encoder_delta,
             })
 
         return losses
@@ -385,12 +390,14 @@ class PPOLearner():
         """ 
         Forward pass through the actor network to get the action distribution and log probabilities, to compute the entropy of the policy distribution and the current state values.
         """
-        logits = self.controller.actor_network(states) # (batch_size, n_actions)
+        encoded_states = self.controller.encoder_network(states)
+        encoded_next_states = self.controller.encoder_network(next_states)
+        logits = self.controller.actor_network(encoded_states) # (batch_size, n_actions)
         action_distribution = torch.distributions.Categorical(logits=logits)
         log_probs = action_distribution.log_prob(actions) # (batch_size,)
         entropy = action_distribution.entropy() # (batch_size,)
-        state_values = self.controller.critic_network(states) # (batch_size, 1)
-        next_state_values = self.controller.critic_network(next_states) # (batch_size, 1)
+        state_values = self.controller.critic_network(encoded_states) # (batch_size, 1)
+        next_state_values = self.controller.critic_network(encoded_next_states) # (batch_size, 1)
         return log_probs, entropy, state_values, next_state_values
     
     # TODO: finish implementing running mean and std calculation over all workers

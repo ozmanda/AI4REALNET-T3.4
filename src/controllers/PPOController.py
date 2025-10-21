@@ -25,6 +25,7 @@ class PPOController(nn.Module):
             self.agent_ID: Union[int, str] = agent_ID
         self._init_hyperparameters(config)
 
+        self._build_encoder()
         self._build_actor()
         self._build_critic()
         self.update_step: int = 0
@@ -36,30 +37,34 @@ class PPOController(nn.Module):
         self.action_size: int = config['action_size']
         self.state_size: int = config['state_size']
 
+    def _build_encoder(self) -> None:
+        self.encoded_state_size = self.config['encoder']['output_size']
+        self.encoder_network = FeedForwardNN(self.state_size, self.encoded_state_size, self.config['encoder'])
+
     def _build_actor(self) -> None:
-        self.actor_network = FeedForwardNN(self.state_size, self.action_size, self.config['actor_config'])
+        self.actor_network = FeedForwardNN(self.encoded_state_size, self.action_size, self.config['actor_config'])
 
     def _build_critic(self) -> None:
-        self.critic_network = FeedForwardNN(self.state_size, 1, self.config['critic_config'])
+        self.critic_network = FeedForwardNN(self.encoded_state_size, 1, self.config['critic_config'])
 
     def init_wandb(self) -> None:
         wandb.watch(self.actor_network, log='all')
         wandb.watch(self.critic_network, log='all')
 
-    def _make_logits(self, states: Tensor) -> Tensor:
+    def _make_logits(self, encoded_states: Tensor) -> Tensor:
         """
         Create logits for the action space based on the current state.
         
         Parameters:
-            - states: Tensor (batch_size, n_features)
+            - encoded_states: Tensor (batch_size, n_features)
         
         Returns:
             - logits: Tensor (batch_size, n_actions)
         """
-        return self.actor_network(states)
+        return self.actor_network(encoded_states)
     
     def get_parameters(self):
-        return chain(self.actor_network.parameters(), self.critic_network.parameters())
+        return chain(self.actor_network.parameters(), self.critic_network.parameters(), self.encoder_network.parameters())
 
     def update_weights(self, network_params: Tuple[Dict, Dict]) -> None:
         """
@@ -68,9 +73,16 @@ class PPOController(nn.Module):
         Parameters:
             - network_params: Tuple containing the actor and critic network parameters
         """
-        actor_params, critic_params = network_params
+        encoder_params, actor_params, critic_params = network_params
+        self.update_encoder(encoder_params)
         self.update_actor(actor_params)
         self.update_critic(critic_params)
+
+    def update_encoder(self, network_params: Dict) -> None:
+        """ Update the feature extraction network with the given parameters. """
+        self.old_encoder_params = self.encoder_network.state_dict()
+        self.new_encoder_params = network_params
+        self.encoder_network.load_state_dict(network_params)
 
     def update_actor(self, network_params: Dict) -> None:
         """ Update the actor network with the given parameters. """
@@ -84,18 +96,18 @@ class PPOController(nn.Module):
         self.new_critic_params = network_params
         self.critic_network.load_state_dict(self.new_critic_params)
 
-    def get_network_params(self) -> Tuple[Dict, Dict]:
+    def get_network_params(self) -> Tuple[Dict, Dict, Dict]:
         """
-        Get the current parameters of the actor and critic networks.
-        
+        Get the current parameters of the actor, critic, and encoder networks.
+
         Returns:
             - actor_params: Dict containing the actor network parameters
             - critic_params: Dict containing the critic network parameters
         """
         actor_params = self.actor_network.state_dict()
         critic_params = self.critic_network.state_dict()
-        return actor_params, critic_params
-    
+        encoder_params = self.encoder_network.state_dict()
+        return encoder_params, actor_params, critic_params
 
     def state_values(self, states: Tensor, extras: Dict[str, Tensor]) -> Tensor:
         """
@@ -108,7 +120,8 @@ class PPOController(nn.Module):
         Returns:
             - state_values: Tensor of shape (batch_size, 1)
         """
-        return self.critic_network(states)
+        encoded_states = self.encoder_network(states)
+        return self.critic_network(encoded_states)
 
 
     def sample_action(self, states: torch.Tensor) -> Tuple[Tensor, Tensor, Tensor, None]:
@@ -123,11 +136,12 @@ class PPOController(nn.Module):
             - log_prob: Tensor of shape (batch_size, 1)
             - value: Tensor of shape (batch_size, 1)
         """
-        logits = self._make_logits(states)
+        encoded_states = self.encoder_network(states)
+        logits = self._make_logits(encoded_states)
         action_distribution = torch.distributions.Categorical(logits=logits)
         actions = action_distribution.sample()
         log_prob = action_distribution.log_prob(actions)
-        values = self.critic_network(states)
+        values = self.critic_network(encoded_states)
         return actions, log_prob, values, None # extras = None (compatibility with other controllers)
     
 
@@ -144,7 +158,8 @@ class PPOController(nn.Module):
         """
         # TODO: change this to match sample_action function
         with torch.no_grad():
-            logits = self._make_logits(state)
+            encoded_state = self.encoder_network(state)
+            logits = self._make_logits(encoded_state)
             actions = torch.argmax(logits, dim=-1)
             log_probs = torch.log_softmax(logits, dim=1)
         return actions, log_probs
@@ -154,7 +169,8 @@ class PPOController(nn.Module):
         """
         Computes the log-probabilities of the given actions under the current policy.
         """
-        logits = self._make_logits(states)
+        encoded_states = self.encoder_network(states)
+        logits = self._make_logits(encoded_states)
         action_distribution = torch.distributions.Categorical(logits=logits)
         return action_distribution.log_prob(actions)
 
@@ -164,6 +180,7 @@ class PPOController(nn.Module):
         """
         state_dict = {
             'actor_network': self.actor_network.state_dict(),
-            'critic_network': self.critic_network.state_dict()
+            'critic_network': self.critic_network.state_dict(),
+            'encoder_network': self.encoder_network.state_dict()
         }
         return state_dict
