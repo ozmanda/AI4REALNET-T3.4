@@ -7,25 +7,25 @@ max_optimisation_steps: 1000
 
 # Learner Config
 learner_config: 
-    run_name: "FNN_run18"
+    run_name: "FNN_test"
     max_steps: 10000
     max_steps_per_episode: 400
     target_updates: 100
-    samples_per_update: 1024
-    batch_size: 256
+    samples_per_update: 2048
+    batch_size: 128
     IS: false
     log_interval: 10
     n_workers: 4
     optimiser_config:
       type: "adam"
-      learning_rate: 3e-4
-    sgd_iterations: 20
+      learning_rate: 6e-4
+    sgd_iterations: 10
     gae_horizon: 16
-    gamma: 0.995
+    gamma: 0.99
     lam: 0.95
     clip_epsilon: 0.2
-    value_loss_coefficient: 0.5
-    entropy_coefficient: 0.001
+    value_loss_coefficient: 1.5
+    entropy_coefficient: 0.01
     
 
 # Controller Config
@@ -43,15 +43,16 @@ controller_config:
       type: "FNN"
       layer_sizes: 
       - 256
+      - 256
       - 128
 
 
 # Environment Config
 environment_config:
-    height: 30
-    width: 30
-    n_agents: 2
-    n_cities: 2
+    height: 50
+    width: 50
+    n_agents: 4
+    n_cities: 3
     grid_distribution: false
     max_rails_between_cities: 2
     max_rail_pairs_in_city: 2
