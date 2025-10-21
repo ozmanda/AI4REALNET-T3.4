@@ -1,13 +1,7 @@
 ---
-# run info
-n_episodes: 50
-seed: 42
-n_workers: 2
-max_optimisation_steps: 1000
-
 # Learner Config
 learner_config: 
-    run_name: "FNN_test"
+    run_name: "FNN_encoder_test"
     max_steps: 10000
     max_steps_per_episode: 400
     target_updates: 100
@@ -15,7 +9,7 @@ learner_config:
     batch_size: 128
     IS: false
     log_interval: 10
-    n_workers: 4
+    n_workers: 2
     optimiser_config:
       type: "adam"
       learning_rate: 6e-4
@@ -33,18 +27,21 @@ controller_config:
     action_size: 5
     # tau: 0.99
     n_features: 12
-    actor_config:
+    encoder:
       type: "FNN"
       layer_sizes: 
       - 512
       - 256
-      - 128
+      output_size: 128
+    actor_config:
+      type: "FNN"
+      layer_sizes: 
+      - 64
     critic_config:
       type: "FNN"
       layer_sizes: 
-      - 256
-      - 256
       - 128
+      - 64
 
 
 # Environment Config
