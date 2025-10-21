@@ -2,32 +2,24 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "PPO Synchronous (Debug)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/run/ppo.py",
-            "console": "integratedTerminal",
-        },
-        {
             "name": "PPO Synchronous",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/run/ppo.py",
             "console": "integratedTerminal",
+            "args": [
+                "--config_path", "src/configs/PPO_FNN.yaml"
+            ]
         },
         {
-            "name": "IMPALA Asynchronous (Debug)",
+            "name": "IMPALA Asynchronous",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/run/impala.py",
             "console": "integratedTerminal",
+            "args": [
+                "--config_path", "src/configs/PPO_FNN.yaml"
+            ]
         },
-        {
-            "name": "IMPALA Asynchronous",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/run/impala.py",
-            "console": "integratedTerminal",
-        }
     ]
 }
