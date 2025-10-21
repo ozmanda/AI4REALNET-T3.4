@@ -119,7 +119,7 @@
       "id": 1752739610711,
       "name": "E-W 1",
       "lineId": 1752739521471,
-      "trainClassId": 1760682743345,
+      "trainClassId": 2,
       "travelFactor": 1.1,
       "dwellTime": 2,
       "stops": [
@@ -143,24 +143,9 @@
       "speed": 1
     },
     {
-      "id": 1760682743345,
-      "name": "Regional",
-      "speed": 1
-    },
-    {
       "id": 2,
       "name": "Express",
-      "speed": 0.8
-    },
-    {
-      "id": 3,
-      "name": "Local",
-      "speed": 0.6
-    },
-    {
-      "id": 4,
-      "name": "Cargo",
-      "speed": 0.5
+      "speed": 1
     }
   ],
   "flatland line": {
