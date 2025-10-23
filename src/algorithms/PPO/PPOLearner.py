@@ -257,6 +257,7 @@ class PPOLearner():
                 new_log_probs, entropy, new_state_values, new_next_state_values = self._evaluate(minibatch['states'], minibatch['next_states'], minibatch['actions'])
                 minibatch['new_log_probs'] = new_log_probs
                 minibatch['new_state_values'] = new_state_values.squeeze(-1)
+                minibatch['bootstrap_values'] = new_next_state_values.squeeze(-1)
                 minibatch['entropy'] = entropy
 
                 total_loss, actor_loss, critic_loss = self._loss(minibatch)
@@ -285,9 +286,9 @@ class PPOLearner():
                 losses['value_loss'].append(critic_loss.item())
 
                 # entropy and log probs for approx KL
-                entropy_sum = torch.cat((entropy_sum, minibatch['entropy']))
-                old_log_probs_sum = torch.cat((old_log_probs_sum, minibatch['log_probs']))
-                new_log_probs_sum = torch.cat((new_log_probs_sum, new_log_probs))
+                entropy_sum = torch.cat((entropy_sum, minibatch['entropy'].detach()))
+                old_log_probs_sum = torch.cat((old_log_probs_sum, minibatch['log_probs'].detach()))
+                new_log_probs_sum = torch.cat((new_log_probs_sum, new_log_probs.detach()))
 
             self.epochs += 1
             wandb.log({
@@ -317,7 +318,8 @@ class PPOLearner():
                                 clip_eps=self.clip_epsilon)
 
         if self.importance_sampling:
-            critic_loss = value_loss_with_IS(state_values=minibatch['new_state_values'],
+            critic_loss = value_loss_with_IS(predicted_values=minibatch['new_state_values'],
+                                             bootstrap_values=minibatch['bootstrap_values'],
                                             new_state_values=minibatch['new_state_values'],
                                             new_log_prob=minibatch['new_log_probs'],
                                             old_log_prob=minibatch['log_probs'],
@@ -326,8 +328,8 @@ class PPOLearner():
                                             gamma=self.gamma
                                             )
         else:
-            critic_loss = value_loss(state_values=minibatch['state_values'],
-                                    new_state_values=minibatch['new_state_values'],
+            critic_loss = value_loss(predicted_values=minibatch['state_values'],
+                                    expected_values=minibatch['new_state_values'],
                                     reward=minibatch['rewards'],
                                     done=minibatch['dones'],
                                     gamma=self.gamma

@@ -155,7 +155,7 @@ class MultiAgentRolloutBuffer:
 
         transitions_dict: Dict = {'states': torch.stack(states).clone().detach(),
                 'next_states': torch.stack(next_states).clone().detach(),
-                'state_values': torch.stack(state_values).clone().detach(),
+                'state_values': torch.stack(state_values).clone(),
                 'next_state_values': torch.stack(next_state_values).clone().detach(),
                 'actions': torch.stack(actions).clone().detach(),
                 'log_probs': torch.stack(log_probs).clone().detach(),
