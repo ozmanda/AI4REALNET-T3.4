@@ -1,7 +1,7 @@
 ---
 # Learner Config
 learner_config: 
-    run_name: "FNN_encoder_run3"
+    run_name: "FNN_encoder_run4"
     max_steps: 10000
     max_steps_per_episode: 400
     target_updates: 100
