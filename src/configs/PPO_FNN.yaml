@@ -1,7 +1,7 @@
 ---
 # Learner Config
 learner_config: 
-    run_name: "FNN_encoder_test"
+    run_name: "FNN_encoder_run3"
     max_steps: 10000
     max_steps_per_episode: 400
     target_updates: 100
@@ -18,8 +18,8 @@ learner_config:
     gamma: 0.99
     lam: 0.95
     clip_epsilon: 0.2
-    value_loss_coefficient: 1.5
-    entropy_coefficient: 0.01
+    value_loss_coefficient: 0.9
+    entropy_coefficient: 0.001
     
 
 # Controller Config
