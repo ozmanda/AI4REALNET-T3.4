@@ -184,3 +184,12 @@ class PPOController(nn.Module):
             'encoder_network': self.encoder_network.state_dict()
         }
         return state_dict
+    
+
+    def load_model(self, model_path: str) -> None:
+        """
+        Load the model from the specified path.
+        """
+        self.actor_network.load_state_dict(torch.load(f'{model_path}/actor.pth', map_location=torch.device('cpu')))
+        self.critic_network.load_state_dict(torch.load(f'{model_path}/critic.pth', map_location=torch.device('cpu')))
+        self.encoder_network.load_state_dict(torch.load(f'{model_path}/encoder.pth', map_location=torch.device('cpu')))
