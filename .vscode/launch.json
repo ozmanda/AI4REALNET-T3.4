@@ -5,6 +5,16 @@
             "name": "PPO Synchronous",
             "type": "python",
             "request": "launch",
+            "program": "${workspaceFolder}/run/sync_ppo.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--config_path", "src/configs/PPO_FNN.yaml"
+            ]
+        },
+        {
+            "name": "PPO",
+            "type": "python",
+            "request": "launch",
             "program": "${workspaceFolder}/run/ppo.py",
             "console": "integratedTerminal",
             "args": [
