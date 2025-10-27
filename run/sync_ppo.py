@@ -18,7 +18,7 @@ from src.utils.observation.obs_utils import calculate_state_size
 
 from src.configs.EnvConfig import FlatlandEnvConfig
 from src.configs.ControllerConfigs import PPOControllerConfig
-from src.algorithms.PPO.PPOLearner import PPOLearner
+from src.algorithms.Sync_PPO.PPOLearner import PPOLearner
 
 
 def train_ppo(controller_config: PPOControllerConfig, learner_config: Dict, env_config: Dict, device: str) -> None:
