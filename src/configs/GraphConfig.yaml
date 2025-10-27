@@ -1,0 +1,65 @@
+---
+# Learner Config
+learner_config: 
+    run_name: "FNN_encoder_run4"
+    max_steps: 10000
+    max_steps_per_episode: 400
+    target_updates: 100
+    samples_per_update: 2048
+    batch_size: 128
+    IS: false
+    log_interval: 10
+    n_workers: 2
+    optimiser_config:
+      type: "adam"
+      learning_rate: 6e-4
+    sgd_iterations: 10
+    gae_horizon: 16
+    gamma: 0.99
+    lam: 0.95
+    clip_epsilon: 0.2
+    value_loss_coefficient: 0.9
+    entropy_coefficient: 0.001
+    
+
+# Controller Config
+controller_config: 
+    n_features: 12
+    encoder:
+      type: "FNN"
+      layer_sizes: 
+      - 512
+      - 256
+      output_size: 128
+    actor_config:
+      type: "FNN"
+      layer_sizes: 
+      - 64
+    critic_config:
+      type: "FNN"
+      layer_sizes: 
+      - 128
+      - 64
+
+
+# Environment Config
+environment_config:
+    height: 50
+    width: 50
+    n_agents: 4
+    n_cities: 3
+    grid_distribution: false
+    max_rails_between_cities: 2
+    max_rail_pairs_in_city: 2
+    observation_builder_config: 
+      type: "tree"
+      predictor: "shortest_path"
+      max_depth: 2
+    malfunction_config:
+      malfunction_rate: 0.0
+      min_duration: 5
+      max_duration: 10
+    speed_ratios: 
+      1.: 0.7
+      0.5: 0.3
+    reward_config: 'simple_step_penalty'
