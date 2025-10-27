@@ -1,29 +1,23 @@
 import os
-import sys
-import time
 import wandb
 import queue
-import argparse
 import numpy as np
 from itertools import chain
-from typing import List, Dict, Union, Tuple, Optional
+from typing import List, Dict, Union, Tuple, Optional, Any
 
 import torch
 from torch import Tensor
 import torch.optim as optim
-import torch.multiprocessing as mp
-from multiprocessing.synchronize import Event
-from multiprocessing.managers import DictProxy
 
 from src.controllers.BaseController import Controller
 from src.controllers.PPOController import PPOController
 from src.controllers.LSTMController import LSTMController
 from src.configs.ControllerConfigs import ControllerConfig
 from src.configs.EnvConfig import FlatlandEnvConfig
-from src.algorithms.PPO.PPOWorker import PPOWorker
 from src.algorithms.loss import value_loss, value_loss_with_IS, policy_loss
 from src.memory.MultiAgentRolloutBuffer import MultiAgentRolloutBuffer
-from src.utils.observation.RunningMeanStd import RunningMeanStd
+from src.utils.observation.obs_utils import obs_dict_to_tensor
+from src.utils.observation.normalisation import FlatlandNormalisation
 
 
 class PPOLearner():
@@ -36,25 +30,27 @@ class PPOLearner():
         self._init_learning_params(learner_config)
         self._init_controller(controller_config)
 
-        # Parallelisation Configuration
-        self.n_workers: int = learner_config['n_workers'] 
-        self._init_queues()
+        # Initialise environment
+        self.obs_type: str = self.env_config.observation_builder_config['type']
+        self.max_depth: int = self.env_config.observation_builder_config['max_depth']
+        self.env = env_config.create_env()
+        self._init_normalisation()
 
         # Initialise the optimiser
         self._build_optimiser(learner_config['optimiser_config'])
         self.epochs: int = 0
+        self.total_episodes: int = 0
 
         # Initialise wandb for logging
         self._init_wandb(learner_config)
 
-        # Initialise running mean and std for observation normalisation
-        self.distance_rms: RunningMeanStd = RunningMeanStd(size=1)
 
     def _init_controller(self, config: ControllerConfig) -> None:
         self.controller_config = config
         self.n_nodes: int = config.config_dict['n_nodes']
         self.state_size: int = config.config_dict['state_size']
         self.controller: Union[PPOController, LSTMController, Controller] = config.create_controller()
+
 
     def _init_learning_params(self, learner_config: Dict) -> None:
         self.max_steps: int = learner_config['max_steps']
@@ -75,6 +71,7 @@ class PPOLearner():
         self.gae_horizon: int = learner_config['gae_horizon']
         self.clip_epsilon: float = learner_config['clip_epsilon']
 
+
     def _init_wandb(self, learner_config: Dict) -> None:
         """
         Initialize Weights & Biases for logging.
@@ -88,127 +85,114 @@ class PPOLearner():
         wandb.watch(self.controller.critic_network, log='all')
         wandb.watch(self.controller.encoder_network, log='all')
 
-    def _init_queues(self) -> None:
-        # create queues
-        self.logging_queue: mp.Queue = mp.Queue()
-        self.rollout_queue: mp.Queue = mp.Queue()
-        # self.weights_queue: mp.Queue = mp.Queue()
-        self.barrier = mp.Barrier(self.n_workers + 1)  # +1 for the learner process
-        self.done_event: Event = mp.Event()
-        # self.observation_queue: mp.Queue = mp.Queue()
-        self.manager = mp.Manager()
-        self.shared_weights: DictProxy = self.manager.dict()
-        # self.shared_normalisation: DictProxy = self.manager.dict()
+
+    def _init_normalisation(self) -> None:
+        """ Normalisation setup """
+        self.flatland_normalisation: FlatlandNormalisation = FlatlandNormalisation(
+            n_nodes=self.controller.config['n_nodes'],
+            n_features=self.controller.config['n_features'],
+            n_agents=self.env.number_of_agents,
+            env_size=(self.env_config.width, self.env_config.height)
+        )
 
 
-    def sync_run(self) -> None:
+    def run(self) -> None:
         """
-        Synchronous PPO training run.
+        Simple PPO training run.
         """
         # initialise learning rollout
+        _ = self.env.reset()
         self.n_agents = self.env_config.get_num_agents()
         self.rollout = MultiAgentRolloutBuffer(n_agents=self.n_agents)
-
-        # create and start workers
-        # TODO: add device specification for the workers
-        mp.set_start_method('spawn', force=True)  # parallelisation of rollout gathering - spawn is safer for pytorch
-        workers: List[PPOWorker] = []
-        print('Initialising workers...')
-        for worker_id in range(self.n_workers):
-            worker = PPOWorker(worker_id=worker_id,
-                               logging_queue=self.logging_queue,
-                               rollout_queue=self.rollout_queue,
-                               shared_weights=self.shared_weights,
-                            #    shared_normalisation=self.shared_normalisation,
-                            #    observation_queue=self.observation_queue,
-                               barrier=self.barrier,
-                               done_event=self.done_event,
-                               env_config=self.env_config,
-                               controller_config=self.controller_config,
-                               max_steps=(self.max_steps, self.max_steps_per_episode),
-                               device='cpu')
-            workers.append(worker)
-            worker.start()
-        self._broadcast_controller_state() # initial weight broadcast
-        # self._initialise_normalisation()
-
+        self.rollout.reset(n_agents=self.n_agents)
         interrupted = False
 
-        try:
-            # gather rollouts and update when enough data is collected
-            while self.completed_updates < self.target_updates:
-                self.barrier.wait()  # wait for workers to finish their rollout
-                for _ in range(self.n_workers):
-                    # gather rollouts from workers
-                    try:
-                        self._gather_rollout()
-                    except Exception as e:
-                        print(f"Error: {e}")
-                        continue
-                # self._update_normalisation()
-
-                # add the episode to the current rollout buffer
-                if self.rollout.total_steps >= self.samples_per_update:
-                    # update the controller with the current rollout
-                    self._optimise()
-                    self.completed_updates += 1
-                    print(f'\n\nCompleted Updates: {self.completed_updates} / {self.target_updates}\n\n')
-
-                    wandb.log({'train/average_episode_reward': np.mean([ep['average_episode_reward'] for ep in self.rollout.episodes])})
-
-                    # broadcast updated controller weights
-                    self._broadcast_controller_state()
-
-                    # reset rollout for next update
-                    self.rollout.reset(n_agents=self.n_agents)
-        except KeyboardInterrupt:
-            interrupted = True
-            print('\nKeyboardInterrupt received. Saving current model parameters before shutting down.\n')
-        finally:
-            # Wait for all workers to finish their last trajectory collections
-            self.done_event.set()
-            if not interrupted:
-                for _ in range(self.n_workers):
-                    try:
-                        self._gather_rollout()
-                    except queue.Empty:
-                        continue
-
-                # final controller update
+        # try:
+        # TODO: gather rollouts and update when enough data is collected
+        while self.completed_updates < self.target_updates:
+            # gather rollouts
+            log_info = self.gather_rollouts()
+            wandb.log(log_info)
+            if self.rollout.total_steps >= self.samples_per_update:
+                # update the controller with the current rollout
                 self._optimise()
                 self.completed_updates += 1
-                wandb.log({
-                    'train/average_episode_reward': np.mean([ep['average_episode_reward'] for ep in self.rollout.episodes]),
-                })
-
-            # terminate all workers
-            for w in workers:
-                if w.is_alive():
-                    w.terminate()
-
-            wandb.finish()
-            if interrupted:
-                self._save_model('interrupt')
-            self._save_model()
+                print(f'\n\nCompleted Updates: {self.completed_updates} / {self.target_updates}\n\n')
+                wandb.log({'train/average_episode_reward': np.mean([ep['average_episode_reward'] for ep in self.rollout.episodes])})
 
 
-    def _gather_rollout(self) -> None:
-        """ Gather episodes from rollout queue and add to training rollout. """
-        worker_rollout: Dict[str, List] = self.rollout_queue.get(timeout=60)
-        self.rollout.add_episode(worker_rollout)
-        self._log_episode_info()
+                # reset rollout for next update
+                self.rollout.reset(n_agents=self.n_agents)
 
+        # except KeyboardInterrupt:
+        #     interrupted = True
+        #     print('\nKeyboardInterrupt received. Saving current model parameters before shutting down.\n')
+        # finally:
+        #     # final controller update
+        #     self._optimise()
+        #     self.completed_updates += 1
+        #     wandb.log({
+        #         'train/average_episode_reward': np.mean([ep['average_episode_reward'] for ep in self.rollout.episodes]),
+        #     })
 
-    def _broadcast_controller_state(self) -> None:
-        """
-        Push the current controller state to the shared dictionary for workers to access.
-        """
-        controller_state = (self.controller.encoder_network.state_dict(),
-                            self.controller.actor_network.state_dict(),
-                            self.controller.critic_network.state_dict())
-        self.shared_weights['controller_state'] = controller_state
-        self.shared_weights['update_step'] = self.completed_updates
-        self.barrier.wait()  # wait for all workers to acknowledge the new weights
+        #     wandb.finish()
+        #     if interrupted:
+        #         self._save_model()
+        #     self._save_model()
+
+    
+    def gather_rollouts(self) -> Dict[str, Any]:
+        episode_step = 0
+        current_state_dict, _ = self.env.reset()
+        current_state_tensor = obs_dict_to_tensor(observation=current_state_dict, 
+                                                  obs_type=self.obs_type, 
+                                                  n_agents=self.n_agents,
+                                                  max_depth=self.max_depth,
+                                                  n_nodes=self.controller.config['n_nodes'])
+        current_state_tensor = self.flatland_normalisation.normalise(current_state_tensor.unsqueeze(0)).squeeze(0)
+        dones_list = [False for _ in range(self.n_agents)]
+        actions_dict = {i: 0 for i in range(self.n_agents)}
+
+        while not all(dones_list) and episode_step < self.max_steps_per_episode:
+            actions, log_probs, state_values, extras = self.controller.sample_action(current_state_tensor)
+            
+            for i in range(self.n_agents):
+                actions_dict[i] = int(actions[i])
+
+            next_state_dict, rewards, dones, infos = self.env.step(actions_dict)
+            next_state_tensor = obs_dict_to_tensor(observation=next_state_dict, 
+                                                   obs_type=self.obs_type, 
+                                                   n_agents=self.n_agents,
+                                                   max_depth=self.max_depth,
+                                                   n_nodes=self.controller.config['n_nodes'])
+            next_state_tensor = self.flatland_normalisation.normalise(next_state_tensor.unsqueeze(0)).squeeze(0).detach()
+            next_state_values = self.controller.state_values(next_state_tensor, extras=extras).detach()
+
+            # Store transition in rollout buffer
+            self.rollout.add_transitions(states=current_state_tensor.detach(),
+                                         state_values=state_values.squeeze(1).detach(),
+                                         next_states=next_state_tensor,
+                                         next_state_values=next_state_values,
+                                         actions=actions,
+                                         log_probs=log_probs,
+                                         rewards=rewards,
+                                         dones=dones,
+                                         extras=extras)
+
+            current_state_tensor = next_state_tensor
+            episode_step += 1
+            self.total_steps += 1
+
+            for i in range(self.n_agents):
+                dones_list[i] = dones[i]
+
+        self.rollout.end_episode()
+        log_info = {'episode': self.total_episodes,
+                    'episode/total_reward': self.rollout.episodes[-1]['total_reward'],
+                    'episode/average_reward': self.rollout.episodes[-1]['average_episode_reward'],
+                    'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],
+                    'episode/completion': sum([dones[agent] for agent in range(self.n_agents)]) / self.n_agents}
+        return log_info
 
 
     def _save_model(self, suffix: Optional[str] = None) -> None:
@@ -221,24 +205,6 @@ class PPOLearner():
         torch.save(self.controller.critic_network.state_dict(), os.path.join(savepath, 'critic.pth'))
         torch.save(self.controller.encoder_network.state_dict(), os.path.join(savepath, 'encoder.pth'))
         print(f'Model parameters saved to {savepath}')
-
-
-    def _log_episode_info(self):
-        """Log episode information to Weights & Biases. """
-        try: 
-            while True: 
-                log_info = self.logging_queue.get_nowait()
-                worker_id = log_info['worker_id']
-                wandb.log({
-                    f'worker_{worker_id}/total_reward': log_info['episode/total_reward'],
-                    f'worker_{worker_id}/average_reward': log_info['episode/average_reward'],
-                    f'worker_{worker_id}/average_episode_length': log_info['episode/average_length'],
-                    f'worker_{worker_id}/completion': log_info['episode/completion'],
-                    # global aggregated metrics
-                    'episode/total_reward': log_info['episode/total_reward'],
-                })
-        except queue.Empty:
-            pass
 
 
     def _build_optimiser(self, optimiser_config: Dict[str, Union[int, str]]) -> optim.Optimizer:
@@ -416,32 +382,3 @@ class PPOLearner():
         next_state_values = self.controller.critic_network(encoded_next_states) # (batch_size, 1)
         return log_probs, entropy, state_values, next_state_values
     
-    # TODO: finish implementing running mean and std calculation over all workers
-    # def _initialise_normalisation(self) -> None:
-    #     """
-    #     Update the running mean and std for distance metrics and push to the shared dictionary for workers to access.
-    #     """
-    #     self._gather_observations()
-    #     self.shared_normalisation['distance_rms'] = self.distance_rms
-    #     print("Learner waiting at barrier after normalsation push...")
-    #     self.barrier.wait()
-    
-    # def _gather_observations(self) -> None:
-    #     """
-    #     Gather distance observations from all workers to update the running mean and std.
-    #     """
-    #     print("Learner waiting at barrier before gathering observations...")
-    #     self.barrier.wait()  # wait for all workers to push their statistics
-    #     for _ in range(self.n_workers): 
-    #         worker_obs = self.observation_queue.get()
-    #         print("Learner calculating rms update...")
-    #         self.distance_rms.update_batch(worker_obs)
-        
-    # def _update_normalisation(self) -> None:
-    #     """
-    #     Update the running mean and std for distance metrics and push to the shared dictionary for workers to access.
-    #     """
-    #     self._gather_observations()
-    #     self.shared_normalisation['distance_rms'] = self.distance_rms
-    #     print("Learner waiting at barrier after normalsation push...")
-    #     self.barrier.wait()
