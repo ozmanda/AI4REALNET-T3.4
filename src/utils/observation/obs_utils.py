@@ -141,6 +141,7 @@ def obs_dict_to_tensor(observation: Dict[int, Node], obs_type: str, n_agents: in
     For global observations:    (n_agents, env_width * env_height * 23)
     Tree observations:          (n_agents, n_nodes * 12)
     '''
+    n_agents = len(observation)
     if obs_type == 'global':
         obs_tensor = global_observation_tensor(observation)
     elif obs_type == 'tree':
