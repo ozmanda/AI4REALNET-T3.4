@@ -1,6 +1,5 @@
 import os
 import wandb
-import queue
 import numpy as np
 from itertools import chain
 from typing import List, Dict, Union, Tuple, Optional, Any
@@ -43,6 +42,11 @@ class PPOLearner():
 
         # Initialise wandb for logging
         self._init_wandb(learner_config)
+
+        # Track shutdown state so we can guarantee model persistence on exit
+        self._shutdown_requested: bool = False
+        self._shutdown_in_progress: bool = False
+        self._register_signal_handlers()
 
 
     def _init_controller(self, config: ControllerConfig) -> None:
@@ -107,42 +111,38 @@ class PPOLearner():
         self.rollout.reset(n_agents=self.n_agents)
         interrupted = False
 
-        # try:
-        # TODO: gather rollouts and update when enough data is collected
-        while self.completed_updates < self.target_updates:
-            # gather rollouts
-            log_info = self.gather_rollouts()
-            wandb.log(log_info)
-            if self.rollout.total_steps >= self.samples_per_update:
-                # update the controller with the current rollout
-                self._optimise()
-                self.completed_updates += 1
-                print(f'\n\nCompleted Updates: {self.completed_updates} / {self.target_updates}\n\n')
-                wandb.log({'train/average_episode_reward': np.mean([ep['average_episode_reward'] for ep in self.rollout.episodes])})
+        try:
+            # TODO: gather rollouts and update when enough data is collected
+            while self.completed_updates < self.target_updates:
+                # gather rollouts
+                log_info = self.gather_rollouts()
+                wandb.log(log_info)
+                if self.rollout.total_steps >= self.samples_per_update:
+                    # update the controller with the current rollout
+                    self._optimise()
+                    self.completed_updates += 1
+                    print(f'\n\nCompleted Updates: {self.completed_updates} / {self.target_updates}\n\n')
+                    wandb.log({'train/average_episode_reward': np.mean([ep['average_episode_reward'] for ep in self.rollout.episodes])})
 
 
-                # reset rollout for next update
-                self.rollout.reset(n_agents=self.n_agents)
+                    # reset rollout for next update
+                    self.rollout.reset(n_agents=self.n_agents)
 
-        # except KeyboardInterrupt:
-        #     interrupted = True
-        #     print('\nKeyboardInterrupt received. Saving current model parameters before shutting down.\n')
-        # finally:
-        #     # final controller update
-        #     self._optimise()
-        #     self.completed_updates += 1
-        #     wandb.log({
-        #         'train/average_episode_reward': np.mean([ep['average_episode_reward'] for ep in self.rollout.episodes]),
-        #     })
-
-        #     wandb.finish()
-        #     if interrupted:
-        #         self._save_model()
-        #     self._save_model()
+        except Exception as e:
+            interrupted = True
+            print(f'\nError received: {e}. Saving current model parameters before shutting down.\n')
+        finally:
+            wandb.finish()
+            if interrupted:
+                self._save_model()
+            self._save_model()
 
     
     def gather_rollouts(self) -> Dict[str, Any]:
         episode_step = 0
+        active_list = [True for _ in range(self.n_agents)]
+        actions_dict = {i: 0 for i in range(self.n_agents)}
+
         current_state_dict, _ = self.env.reset()
         current_state_tensor = obs_dict_to_tensor(observation=current_state_dict, 
                                                   obs_type=self.obs_type, 
@@ -150,23 +150,29 @@ class PPOLearner():
                                                   max_depth=self.max_depth,
                                                   n_nodes=self.controller.config['n_nodes'])
         current_state_tensor = self.flatland_normalisation.normalise(current_state_tensor.unsqueeze(0)).squeeze(0)
-        dones_list = [False for _ in range(self.n_agents)]
-        actions_dict = {i: 0 for i in range(self.n_agents)}
 
-        while not all(dones_list) and episode_step < self.max_steps_per_episode:
-            actions, log_probs, state_values, extras = self.controller.sample_action(current_state_tensor)
-            
-            for i in range(self.n_agents):
-                actions_dict[i] = int(actions[i])
+        while any(active_list) and episode_step < self.max_steps_per_episode:
+            actions, log_probs, state_values, _ = self.controller.sample_action(current_state_tensor)
 
+            # reduce to active agents
+            actions = actions[active_list]
+            log_probs = log_probs[active_list]
+            state_values = state_values[active_list]
+
+            # create actions dict and step environment
+            actions_dict = {idx: int(actions[i]) for i, idx in enumerate(actions)}
             next_state_dict, rewards, dones, infos = self.env.step(actions_dict)
             next_state_tensor = obs_dict_to_tensor(observation=next_state_dict, 
                                                    obs_type=self.obs_type, 
                                                    n_agents=self.n_agents,
                                                    max_depth=self.max_depth,
                                                    n_nodes=self.controller.config['n_nodes'])
+            
+            # reduce to active agents and normalise
+            rewards = [rewards[i] for i in active_list if i]
+            next_state_tensor = next_state_tensor[active_list]
             next_state_tensor = self.flatland_normalisation.normalise(next_state_tensor.unsqueeze(0)).squeeze(0).detach()
-            next_state_values = self.controller.state_values(next_state_tensor, extras=extras).detach()
+            next_state_values = self.controller.state_values(next_state_tensor, extras={}).detach()
 
             # Store transition in rollout buffer
             self.rollout.add_transitions(states=current_state_tensor.detach(),
@@ -177,14 +183,13 @@ class PPOLearner():
                                          log_probs=log_probs,
                                          rewards=rewards,
                                          dones=dones,
-                                         extras=extras)
+                                         extras={})
 
             current_state_tensor = next_state_tensor
             episode_step += 1
             self.total_steps += 1
 
-            for i in range(self.n_agents):
-                dones_list[i] = dones[i]
+            active_list = [not done for done in dones.values()][:-1]
 
         self.rollout.end_episode()
         log_info = {'episode': self.total_episodes,
