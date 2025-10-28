@@ -85,11 +85,12 @@ class FlatlandNormalisation(Normalisation):
             self.c = c
 
         batchsize = x.shape[0]
-        x = x.view(batchsize, self.n_agents, self.n_nodes, self.n_features)
+        n_agents = x.shape[1]
+        x = x.view(batchsize, n_agents, self.n_nodes, self.n_features)
         x = self._normalise_distance_metrics(x)
         x = self._normalise_agent_counts(x)
         x = self._normalise_speed(x)
-        return x.view(batchsize, self.n_agents, self.n_nodes * self.n_features)
+        return x.view(batchsize, n_agents, self.n_nodes * self.n_features)
 
     def _normalise_distance_metrics(self, x: Tensor) -> Tensor:
         """ Normalise the distance features (0:7) using the running mean and std. """
