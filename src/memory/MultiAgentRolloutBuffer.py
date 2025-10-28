@@ -67,7 +67,7 @@ class MultiAgentRolloutBuffer:
             - state_values: Tensor (n_agents, 1)
             - next_state_values: Tensor (n_agents, 1)
         """
-        for agent_handle in range(self.n_agents):
+        for agent_handle in range(len(actions)):
             # add standard transition values
             self.current_episode['states'][agent_handle].append(states[agent_handle])
             self.current_episode['actions'][agent_handle].append(actions[agent_handle])
