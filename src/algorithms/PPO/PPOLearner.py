@@ -230,6 +230,7 @@ class PPOLearner():
 
         gae_stats = self._gaes()
         self.rollout.get_transitions(gae=True) # TODO: check that this is done correctly everywhere
+        self._normalise_rewards()
 
         for _ in range(self.sgd_iterations):  
             entropy_sum: Tensor = Tensor()
@@ -371,6 +372,15 @@ class PPOLearner():
         gae_std = stacked_gaes.std().item()
 
         return raw_gae_mean.item(), raw_gae_std.item(), gae_mean, gae_std
+    
+
+    def _normalise_rewards(self) -> None:
+        """ Normalise rewards across all transitions in the rollout buffer. """
+        rewards: Tensor = self.rollout.transitions['rewards']
+        mean_reward = rewards.mean()   
+        std_reward = rewards.std().clamp_min(1e-8)  # avoid division by zero
+        normalised_rewards = (rewards - mean_reward) / std_reward
+        self.rollout.transitions['rewards'] = normalised_rewards
 
 
     def _evaluate(self, states: Tensor, next_states: Tensor, actions: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
