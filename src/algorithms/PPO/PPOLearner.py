@@ -43,11 +43,6 @@ class PPOLearner():
         # Initialise wandb for logging
         self._init_wandb(learner_config)
 
-        # Track shutdown state so we can guarantee model persistence on exit
-        self._shutdown_requested: bool = False
-        self._shutdown_in_progress: bool = False
-        self._register_signal_handlers()
-
 
     def _init_controller(self, config: ControllerConfig) -> None:
         self.controller_config = config
