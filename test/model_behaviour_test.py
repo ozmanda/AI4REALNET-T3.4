@@ -67,7 +67,7 @@ class ModelBehaviourTest(unittest.TestCase):
         Roll out a single episode with the trained controller, rendering each step so the agent behaviour can be inspected.
         Set MODEL_BEHAVIOUR_SAVE_VIDEO=1 to export a video to MODEL_BEHAVIOUR_VIDEO_PATH (defaults to test/renders/).
         """
-        self.modelpath = 'models/FNN_encoder_run3'  # Adjust this path as needed
+        self.modelpath = 'models/FNN_large_env_run1'  # Adjust this path as needed
         config_path = 'src/configs/PPO_FNN.yaml'
         device = torch.device('cpu')
         show_render = 1 
