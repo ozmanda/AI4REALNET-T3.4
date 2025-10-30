@@ -3,15 +3,15 @@ from torch import Tensor
 import torch.nn.functional as F
 from typing import Tuple
 
-def value_loss(predicted_values: Tensor, expected_values: Tensor, reward: Tensor, done: Tensor, gamma: float, actual_len: int = 1) -> Tensor:
+def value_loss(predicted_values: Tensor, target_values: Tensor) -> Tensor:
     """
-    Calculate the value loss for the critic network. The actual_len parameter is used to indicate the number of steps between state and next_state. Default is 1. 
+    Calculate the value loss for the critic network using MSE between predicted and target values.
+    When using GAE, target_values should be (GAE + baseline).
     """
-    target = reward + (gamma ** actual_len) * (1 - done) * expected_values
-    return F.mse_loss(predicted_values, target)
+    return F.mse_loss(predicted_values, target_values)
 
 
-def value_loss_with_IS(state_values: Tensor, new_state_values: Tensor, new_log_prob: Tensor, old_log_prob: Tensor, reward: Tensor, done: Tensor, gamma: float, actual_len: int = 1):
+def value_loss_with_IS(predicted_values: Tensor, bootstrap_values: Tensor, new_state_values: Tensor, new_log_prob: Tensor, old_log_prob: Tensor, reward: Tensor, done: Tensor, gamma: float, actual_len: int = 1):
     '''
     Value Loss with Importance Sampling
      -> adds importance sampling weights to account for policy changes, stabilising training by reducing the influence of value predictions based on large, potentially unreliable updates to the policy (=stabilisation)
@@ -22,7 +22,7 @@ def value_loss_with_IS(state_values: Tensor, new_state_values: Tensor, new_log_p
         truncated_ratio_log = torch.clamp(new_log_prob - old_log_prob, max=0)
         importance_sample_fix = torch.exp(truncated_ratio_log)
 
-    value_loss = (F.mse_loss(state_values, target, reduction="none") * importance_sample_fix).mean()
+    value_loss = (F.mse_loss(predicted_values, target, reduction="none") * importance_sample_fix).mean()
     return value_loss
 
 

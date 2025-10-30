@@ -94,7 +94,9 @@ class FlatlandNormalisation(Normalisation):
 
     def _normalise_distance_metrics(self, x: Tensor) -> Tensor:
         """ Normalise the distance features (0:7) using the running mean and std. """
-        x[:, :, :, :7] = x[:, :, :, :7] / self.max_distance  # scale distances to [0, 1]
+        # Flatland tree observations already return normalized distances in [0, 1]
+        # Dividing by max_distance (2500) creates extremely small values that cause vanishing gradients
+        # x[:, :, :, :7] = x[:, :, :, :7] / self.max_distance  # DISABLED - causes vanishing gradients
         return x
 
     # TODO: finish implementing running mean and std for distance metrics over all workers

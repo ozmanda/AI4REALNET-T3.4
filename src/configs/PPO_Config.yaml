@@ -11,15 +11,15 @@ learner_config:
     max_steps: 10000
     max_steps_per_episode: 400
     target_updates: 1000
-    samples_per_update: 256
-    training_iterations: 4
-    batch_size: 32
-    IS: true
+    samples_per_update: 512
+    sgd_iterations: 4
+    batch_size: 128
+    IS: false
     log_interval: 10
     n_workers: 1
     optimiser_config:
       type: "adam"
-      learning_rate: 1e-5
+      learning_rate: 5e-5
     
 
 # Controller Config
@@ -29,10 +29,10 @@ controller_config:
     batch_size: 32
     gae_horizon: 16
     n_epochs_update: 3
-    gamma: 0.995
-    lam: 0.95
+    gamma: 0.99
+    lam: 0.9
     clip_epsilon: 0.2
-    value_loss_coefficient: 0.5
+    value_loss_coefficient: 1.0
     entropy_coefficient: 0.01
     tau: 0.99
     n_features: 12
@@ -73,4 +73,4 @@ environment_config:
     speed_ratios: 
       1.: 0.7
       0.5: 0.3
-    reward_config: 0
+    reward_config: "simple_step_penalty"
