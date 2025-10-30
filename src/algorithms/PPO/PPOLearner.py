@@ -76,7 +76,7 @@ class PPOLearner():
         Initialize Weights & Biases for logging.
         """
         self.run_name = learner_config['run_name']
-        wandb.init(project='AI4REALNET-T3.4', config=learner_config, mode='offline')
+        wandb.init(project='AI4REALNET-T3.4', entity='CLS-FHNW', config=learner_config, reinit=True)
         wandb.run.define_metric('episodes/*', step_metric='episode')
         wandb.run.define_metric('train/*', step_metric='epoch')
         wandb.run.name = f"{self.run_name}_PPO"
@@ -328,7 +328,7 @@ class PPOLearner():
         # Entropy bonus
         entropy_loss = -minibatch['entropy'].mean()  # Encourage exploration
 
-        # Total loss & optimisation step        # TODO: controller or learner config?
+        # Total loss & optimisation step 
         total_loss: Tensor = actor_loss + critic_loss * self.value_loss_coeff + entropy_loss * self.entropy_coeff
         return total_loss, actor_loss, critic_loss
 

@@ -342,17 +342,16 @@ class PPOLearner():
                                             gamma=self.gamma
                                             )
         else:
-            critic_loss = value_loss(predicted_values=minibatch['state_values'],
-                                    expected_values=minibatch['new_state_values'],
-                                    reward=minibatch['rewards'],
-                                    done=minibatch['dones'],
-                                    gamma=self.gamma
+            # Compute value targets from GAE + baseline
+            value_targets = (minibatch['gaes'] + minibatch['state_values']).detach()
+            critic_loss = value_loss(predicted_values=minibatch['new_state_values'],
+                                    target_values=value_targets
                                     )
 
         # Entropy bonus
         entropy_loss = -minibatch['entropy'].mean()  # Encourage exploration
 
-        # Total loss & optimisation step        # TODO: controller or learner config?
+        # Total loss & optimisation step
         total_loss: Tensor = actor_loss + critic_loss * self.value_loss_coeff + entropy_loss * self.entropy_coeff
         return total_loss, actor_loss, critic_loss
 
