@@ -159,7 +159,7 @@ class MultiAgentRolloutBuffer:
                 'next_state_values': torch.stack(next_state_values).clone().detach(),
                 'actions': torch.stack(actions).clone().detach(),
                 'log_probs': torch.stack(log_probs).clone().detach(),
-                'rewards': torch.tensor(rewards).clone().detach(),
+                'rewards': torch.tensor(rewards, dtype=torch.float32).clone().detach(),
                 'dones': torch.tensor(dones, dtype=torch.float32).clone().detach(), 
                 'extras': extras 
                 }
