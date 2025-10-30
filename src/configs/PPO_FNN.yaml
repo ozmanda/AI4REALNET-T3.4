@@ -46,10 +46,10 @@ controller_config:
 
 # Environment Config
 environment_config:
-    height: 50
-    width: 50
-    n_agents: 4
-    n_cities: 3
+    height: 70
+    width: 70
+    n_agents: 10
+    n_cities: 4
     grid_distribution: false
     max_rails_between_cities: 2
     max_rail_pairs_in_city: 2

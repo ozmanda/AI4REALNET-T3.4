@@ -76,7 +76,7 @@ class PPOLearner():
         Initialize Weights & Biases for logging.
         """
         self.run_name = learner_config['run_name']
-        wandb.init(project='AI4REALNET-T3.4', entity='CLS-FHNW', config=learner_config, reinit=True)
+        wandb.init(project='AI4REALNET-T3.4', config=learner_config, mode='offline')
         wandb.run.define_metric('episodes/*', step_metric='episode')
         wandb.run.define_metric('train/*', step_metric='epoch')
         wandb.run.name = f"{self.run_name}_PPO"
@@ -220,14 +220,15 @@ class PPOLearner():
         """
         losses = {
             'policy_loss': [],
-            'value_loss': []
+            'value_loss': [],
+            'total_loss': []
         }
 
         gae_stats = self._gaes()
         self.rollout.get_transitions(gae=True) # TODO: check that this is done correctly everywhere
         self._normalise_rewards()
 
-        for _ in range(self.sgd_iterations):  
+        for sgd_iter in range(self.sgd_iterations):  
             entropy_sum: Tensor = Tensor()
             old_log_probs_sum: Tensor = Tensor()
             new_log_probs_sum: Tensor = Tensor()
@@ -251,6 +252,7 @@ class PPOLearner():
 
                 self.optimiser.zero_grad()
                 total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.controller.get_parameters(), max_norm=5.0)
                 self.optimiser.step()
 
                 #! delta actor / critic norm calculation
@@ -265,6 +267,7 @@ class PPOLearner():
                 # add metrics
                 losses['policy_loss'].append(actor_loss.item())
                 losses['value_loss'].append(critic_loss.item())
+                losses['total_loss'].append(total_loss.item())
 
                 # entropy and log probs for approx KL
                 entropy_sum = torch.cat((entropy_sum, minibatch['entropy'].detach()))
@@ -272,19 +275,26 @@ class PPOLearner():
                 new_log_probs_sum = torch.cat((new_log_probs_sum, new_log_probs.detach()))
 
             self.epochs += 1
+            approx_kl = torch.mean(old_log_probs_sum - new_log_probs_sum).item()
             wandb.log({
                 'epoch': self.epochs,
                 'train/policy_loss': np.mean(losses['policy_loss']),
                 'train/value_loss': np.mean(losses['value_loss']),
+                'train/total_loss': np.mean(losses['total_loss']),
                 'train/raw_gae_mean': gae_stats[0],
                 'train/raw_gae_std': gae_stats[1],
                 'train/mean_entropy': entropy.mean().item(),
-                'train/approx_kl': torch.mean(old_log_probs_sum - new_log_probs_sum).item(),
+                'train/approx_kl': approx_kl,
                 #! delta actor / critic norm calculation
                 'train/actor_delta': actor_delta,
                 'train/critic_delta': critic_delta,
                 'train/encoder_delta': encoder_delta,
             })
+            
+            # Early stopping if KL divergence too high
+            if approx_kl > 0.02:
+                print(f"Early stopping at iteration {sgd_iter + 1}/{self.sgd_iterations} due to high KL: {approx_kl:.4f}")
+                break
 
         return losses
     
@@ -309,11 +319,10 @@ class PPOLearner():
                                             gamma=self.gamma
                                             )
         else:
-            critic_loss = value_loss(predicted_values=minibatch['state_values'],
-                                    expected_values=minibatch['new_state_values'],
-                                    reward=minibatch['rewards'],
-                                    done=minibatch['dones'],
-                                    gamma=self.gamma
+            # Compute value targets from GAE + baseline
+            value_targets = (minibatch['gaes'] + minibatch['state_values']).detach()
+            critic_loss = value_loss(predicted_values=minibatch['new_state_values'],
+                                    target_values=value_targets
                                     )
 
         # Entropy bonus
@@ -329,8 +338,8 @@ class PPOLearner():
         for idx, episode in enumerate(self.rollout.episodes):
             self.rollout.episodes[idx]['gaes'] = [[] for _ in range(self.env_config.n_agents)]
             for agent in range(len(episode['states'])):
-                state_values = torch.stack(episode['state_values'][agent])
-                next_state_values = torch.stack(episode['next_state_values'][agent])
+                state_values = torch.stack(episode['state_values'][agent]).detach()
+                next_state_values = torch.stack(episode['next_state_values'][agent]).detach()
 
                 rewards = torch.tensor(episode['rewards'][agent])
                 dones = torch.tensor(episode['dones'][agent]).float()

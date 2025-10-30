@@ -99,7 +99,7 @@ class FlatlandEnvConfig():
             if reward_config == 'simple':
                 return SimpleReward()
             elif reward_config == 'simple_step_penalty':
-                return SimpleStepPenalty(step_penalty=-1.0, terminal_bonus=10.0, progress_coef=0.1)
+                return SimpleStepPenalty(step_penalty=-0.01, terminal_bonus=1.0, progress_coef=0.5)
             elif reward_config == 'default':
                 return DefaultRewards()
             elif reward_config == 'basic_multi_objective':
