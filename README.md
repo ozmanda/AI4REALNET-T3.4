@@ -1,3 +1,5 @@
+!! THIS REPO IS DEPRECATED, MIGRATED TO https://github.com/CyberneticLearningSystems/AI4REALNET-T3.4 !!
+
 # AI4REALNET-T3.4
 Repository for experimental development of fully autonomous AI for the AI4REALNET project. The work focuses on the development of solutions for multi-agent systems, using the flatland simulation environment. 
 
