@@ -135,8 +135,8 @@ class PPOLearner():
     
     def gather_rollouts(self) -> Dict[str, Any]:
         episode_step = 0
-        active_list = [True for _ in range(self.n_agents)]
-        actions_dict = {i: 0 for i in range(self.n_agents)}
+        active_handles = list(range(self.n_agents))
+        last_dones = {}
 
         current_state_dict, _ = self.env.reset()
         current_state_tensor = obs_dict_to_tensor(observation=current_state_dict, 
@@ -146,52 +146,53 @@ class PPOLearner():
                                                   n_nodes=self.controller.config['n_nodes'])
         current_state_tensor = self.flatland_normalisation.normalise(current_state_tensor.unsqueeze(0)).squeeze(0)
 
-        while any(active_list) and episode_step < self.max_steps_per_episode:
-            actions, log_probs, state_values, _ = self.controller.sample_action(current_state_tensor)
+        while active_handles and episode_step < self.max_steps_per_episode:
+            # consider only agents that are still active
+            active_states = current_state_tensor[active_handles]
+            actions, log_probs, state_values, _ = self.controller.sample_action(active_states)
 
-            # reduce to active agents
-            actions = actions[active_list]
-            log_probs = log_probs[active_list]
-            state_values = state_values[active_list]
-
-            # create actions dict and step environment
-            actions_dict = {idx: int(actions[i]) for i, idx in enumerate(actions)}
+            # create actions dict keyed by the actual agent ids and step environment
+            actions_dict = {agent_handle: int(actions[idx]) for idx, agent_handle in enumerate(active_handles)}
             next_state_dict, rewards, dones, infos = self.env.step(actions_dict)
+            last_dones = dones
+
             next_state_tensor = obs_dict_to_tensor(observation=next_state_dict, 
                                                    obs_type=self.obs_type, 
                                                    n_agents=self.n_agents,
                                                    max_depth=self.max_depth,
                                                    n_nodes=self.controller.config['n_nodes'])
             
-            # reduce to active agents and normalise
-            rewards = [rewards[i] for i in active_list if i]
-            next_state_tensor = next_state_tensor[active_list]
-            next_state_tensor = self.flatland_normalisation.normalise(next_state_tensor.unsqueeze(0)).squeeze(0).detach()
-            next_state_values = self.controller.state_values(next_state_tensor, extras={}).detach()
+            # normalise and reduce to active agents
+            normalised_next_state_tensor = self.flatland_normalisation.normalise(next_state_tensor.unsqueeze(0)).squeeze(0).detach()
+            next_state_active = normalised_next_state_tensor[active_handles]
+            next_state_values = self.controller.state_values(next_state_active, extras={}).detach()
 
-            # Store transition in rollout buffer
-            self.rollout.add_transitions(states=current_state_tensor.detach(),
+            # Store transition in rollout buffer with correct agent mapping
+            self.rollout.add_transitions(states=active_states.detach(),
                                          state_values=state_values.squeeze(1).detach(),
-                                         next_states=next_state_tensor,
+                                         next_states=next_state_active,
                                          next_state_values=next_state_values,
                                          actions=actions,
                                          log_probs=log_probs,
                                          rewards=rewards,
                                          dones=dones,
-                                         extras={})
+                                         extras={},
+                                         agent_handles=active_handles)
 
-            current_state_tensor = next_state_tensor
+            current_state_tensor = normalised_next_state_tensor
             episode_step += 1
             self.total_steps += 1
 
-            active_list = [not done for done in dones.values()][:-1]
+            # remove finished agents; ignore the "__all__" entry from Flatland
+            active_handles = [handle for handle in active_handles if not dones.get(handle, False)]
 
         self.rollout.end_episode()
+        done_agents = [agent for agent in range(self.n_agents) if last_dones.get(agent, False)]
         log_info = {'episode': self.total_episodes,
                     'episode/total_reward': self.rollout.episodes[-1]['total_reward'],
                     'episode/average_reward': self.rollout.episodes[-1]['average_episode_reward'],
                     'episode/average_length': self.rollout.episodes[-1]['average_episode_length'],
-                    'episode/completion': sum([dones[agent] for agent in range(self.n_agents)]) / self.n_agents}
+                    'episode/completion': len(done_agents) / self.n_agents}
         return log_info
 
 

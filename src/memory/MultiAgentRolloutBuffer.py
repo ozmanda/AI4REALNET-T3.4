@@ -53,7 +53,8 @@ class MultiAgentRolloutBuffer:
 
     def add_transitions(self, states: Tensor, actions: Dict[Union[int, str], int], log_probs: Tensor, 
                         rewards: Dict[Union[int, str], float], next_states: Tensor, dones: Dict[Union[int, str], bool],
-                        state_values: Tensor, next_state_values: Tensor, extras: Dict[str, Tensor]) -> None:
+                        state_values: Tensor, next_state_values: Tensor, extras: Dict[str, Tensor],
+                        agent_handles: List[Union[int, str]] = None) -> None:
         """
         Adds a transition to the buffer.
 
@@ -66,27 +67,41 @@ class MultiAgentRolloutBuffer:
             - dones: Dict[agent_id, done] (n_agents,)
             - state_values: Tensor (n_agents, 1)
             - next_state_values: Tensor (n_agents, 1)
+            - agent_handles: Optional list specifying which agent each row in `states` etc. belongs to.
+              Defaults to range(len(actions)) or actions.keys() if a dict is provided.
         """
-        for agent_handle in range(len(actions)):
+        if agent_handles is None:
+            # Preserve mapping when callers pass a dict keyed by agent id; otherwise fallback to positional order.
+            if isinstance(actions, dict):
+                agent_handles = list(actions.keys())
+            else:
+                agent_handles = list(range(len(actions)))
+
+        for idx, agent_handle in enumerate(agent_handles):
             # add standard transition values
-            self.current_episode['states'][agent_handle].append(states[agent_handle])
-            self.current_episode['actions'][agent_handle].append(actions[agent_handle])
-            self.current_episode['log_probs'][agent_handle].append(log_probs[agent_handle])
-            self.current_episode['rewards'][agent_handle].append(rewards[agent_handle])
-            self.current_episode['next_states'][agent_handle].append(next_states[agent_handle])
-            self.current_episode['dones'][agent_handle].append(dones[agent_handle])
+            self.current_episode['states'][agent_handle].append(states[idx])
+            action_value = actions[agent_handle] if isinstance(actions, dict) else actions[idx]
+            self.current_episode['actions'][agent_handle].append(action_value)
+            self.current_episode['log_probs'][agent_handle].append(log_probs[idx])
+
+            reward_value = rewards[agent_handle] if isinstance(rewards, dict) else rewards[idx]
+            self.current_episode['rewards'][agent_handle].append(reward_value)
+            self.current_episode['next_states'][agent_handle].append(next_states[idx])
+
+            done_value = dones[agent_handle] if isinstance(dones, dict) else dones[idx]
+            self.current_episode['dones'][agent_handle].append(done_value)
 
             # add state values only if they are provided
             if state_values is not None and next_state_values is not None:
-                self.current_episode['state_values'][agent_handle].append(state_values[agent_handle])
-                self.current_episode['next_state_values'][agent_handle].append(next_state_values[agent_handle])
+                self.current_episode['state_values'][agent_handle].append(state_values[idx])
+                self.current_episode['next_state_values'][agent_handle].append(next_state_values[idx])
 
             # add extras only if the dictionary is not empty
             if extras:
                 if not self.current_episode['extras']:
                     self.current_episode['extras'] = {key: [[] for _ in range(self.n_agents)] for key in extras.keys()}
                 for key in extras.keys():
-                    self.current_episode['extras'][key][agent_handle].append(extras[key][agent_handle])
+                    self.current_episode['extras'][key][agent_handle].append(extras[key][idx])
         # self.total_steps += 1
 
 

@@ -9,9 +9,8 @@ import wandb
 from src.utils.file_utils import load_config_file
 from src.utils.observation.obs_utils import calculate_state_size
 from src.configs.ControllerConfigs import PPOControllerConfig
-
-from src.controllers.PPOController import PPOController
-from src.algorithms.PPO.PPOLearner import Learner
+from src.configs.EnvConfig import FlatlandEnvConfig
+from src.algorithms.PPO.PPOLearner import PPOLearner
 from flatland.envs.rail_env import RailEnv
 
 
@@ -25,12 +24,11 @@ if __name__ == "__main__":
 
     # initialise a PPO agent per agent in the environment
     config['controller_config']['n_nodes'], config['controller_config']['state_size'] = calculate_state_size(config['environment_config']['observation_builder_config']['max_depth'])
-    controller_config: PPOControllerConfig = PPOControllerConfig(config['controller_config'], device='cpu')
-    controller: PPOController = PPOController(config['controller_config'])
+    controller_config: PPOControllerConfig = PPOControllerConfig(config['controller_config'])
+    env_config = FlatlandEnvConfig(config['environment_config'])
 
-    learner = Learner(env_config=config['environment_config'], 
-                      controller=controller, 
-                      learner_config=config['learner_config'], 
-                      env_config=config['environment_config']
-                      )
+    learner = PPOLearner(controller_config=controller_config, 
+                         learner_config=config['learner_config'], 
+                         env_config=env_config
+                         )
     learner.run()
